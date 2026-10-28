@@ -6,7 +6,7 @@ help:
 	@echo "PromptGuard CLI - Build Targets"
 	@echo ""
 	@echo "Setup:"
-	@echo "  make setup          Install git pre-commit hook"
+	@echo "  make setup          Enable the tracked git hooks (.githooks)"
 	@echo ""
 	@echo "Development:"
 	@echo "  make build          Build debug binary"
@@ -26,11 +26,13 @@ help:
 	@echo "  make cross-compile  Build for all platforms"
 	@echo "  make clean          Clean build artifacts"
 
+# Points git at the tracked .githooks/ (the pre-push secret scan). It used to
+# write an untracked .git/hooks/pre-commit, which git ignores once hooksPath is
+# set -- and which failed outright in a worktree, where .git is a file.
 setup:
-	@echo "Installing git pre-commit hook..."
-	@printf '#!/bin/bash\nset -e\nmake ci\n' > .git/hooks/pre-commit
-	@chmod +x .git/hooks/pre-commit
-	@echo "✓ Pre-commit hook installed (runs make ci before each commit)"
+	@git config core.hooksPath .githooks
+	@echo "✓ Tracked git hooks enabled (core.hooksPath=.githooks): pre-push secret scan"
+	@echo "  Optional: git config promptguard.pushGate true   # also run 'make ci' before each push"
 
 build:
 	cargo build

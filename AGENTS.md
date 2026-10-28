@@ -21,7 +21,8 @@ scanning for unprotected LLM calls, auto-fix code transforms, MCP server and
 
 ## Setup: enable the tracked git hooks
 
-Once per clone, because git never turns on a repo's own hooks for you:
+Once per clone, because git never turns on a repo's own hooks for you (`make setup`
+runs the first line):
 
 ```bash
 git config core.hooksPath .githooks
