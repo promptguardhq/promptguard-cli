@@ -21,7 +21,8 @@ scanning for unprotected LLM calls, auto-fix code transforms, MCP server and
 
 ## Setup: enable the tracked git hooks
 
-Once per clone, because git never turns on a repo's own hooks for you:
+Once per clone, because git never turns on a repo's own hooks for you (`make setup`
+runs the first line):
 
 ```bash
 git config core.hooksPath .githooks
@@ -93,4 +94,4 @@ The five canonical triage roles, each label string equal to its name. See `docs/
 
 ### Domain docs
 
-Single-context: `CONTEXT.md` plus `docs/adr/` at the repo root, both created lazily. See `docs/agents/domain.md`.
+Single-context: `CONTEXT.md` plus `docs/adr/` at the repo root; add to them as terms and decisions settle. See `docs/agents/domain.md`.

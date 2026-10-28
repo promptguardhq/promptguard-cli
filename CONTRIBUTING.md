@@ -13,7 +13,7 @@
 ```bash
 git clone https://github.com/acebot712/promptguard-cli.git
 cd promptguard-cli
-make setup              # Install git pre-commit hook
+make setup              # Enable the tracked git hooks (core.hooksPath=.githooks)
 make build              # Build debug binary
 make test               # Run all tests
 ```
@@ -45,7 +45,7 @@ make check              # Quick cargo check (faster than full build)
 make ci                 # Run everything CI runs: fmt-check + lint + test + build
 ```
 
-The pre-commit hook (`make setup`) runs `make ci` before every commit.
+`make setup` enables the tracked `.githooks/pre-push`, which secret-scans the commits you push. To also run `make ci` before every push, opt in with `git config promptguard.pushGate true`; it is off by default because the full run takes minutes.
 
 ### Lint Rules
 
