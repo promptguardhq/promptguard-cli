@@ -1,49 +1,27 @@
 # AGENTS.md
 
-## Overview
+Rust CLI for PromptGuard, published as a single binary: AST-based (Tree-sitter)
+scanning for unprotected LLM calls, auto-fix code transforms, MCP server and
+`mcp-proxy` modes, red team testing, and policy management.
 
-Rust CLI for PromptGuard. Provides AST-based scanning for unprotected LLM calls, auto-fix code transforms, MCP server mode, red team testing, and policy management. Published as a single binary.
+## Where things live
 
-## Repository Layout
+- `src/main.rs` is the Clap entry point; each subcommand is a file in
+  `src/commands/`.
+- `src/local_rules/` is the rule pack behind `scan --offline`. It is
+  **generated**: change it through `scripts/local-rules/regenerate.sh`, whose
+  header says how.
+- `src/commands/mcp_proxy/` wraps a stdio MCP server: it checks each
+  `tools/call`, redacts each tool result (`redact.rs`) and scans and pins each
+  tool list (`manifest.rs`, `pins.rs`). `destructive.rs` is a **safety
+  boundary** (the platform's ADR-0034); treat a change to it as a security
+  change. Its tests run against `tests/support/fake_mcp_server.py`.
+- `tests/fixtures/` holds real project directories the scanner runs on;
+  `tests/support/` holds test helpers that are not scanner fixtures.
 
-```
-src/
-├── main.rs            # CLI entry point (Clap)
-├── scanner/           # AST-based LLM call detection
-├── detector/          # Pattern matching and detection
-├── transformer/       # Code transformation (auto-fix)
-├── config/            # Configuration management
-├── backup/            # File backup before transforms
-├── api/               # PromptGuard API client
-├── local_rules/       # Rule pack for `scan --offline` (generated: scripts/local-rules/)
-└── commands/          # CLI subcommands
-    └── mcp_proxy/     # `mcp-proxy`: wraps a stdio MCP server, checks each
-                       # tools/call (destructive.rs is a safety boundary, ADR-0034),
-                       # redacts each tool result (redact.rs) and scans and pins
-                       # each tool list (manifest.rs, pins.rs)
+## Setup: enable the tracked git hooks
 
-tests/
-├── runtime_shim_tests.rs
-├── environment_scanner_tests.rs
-├── command_tests.rs
-├── api_command_tests.rs
-├── mcp_proxy_tests.rs  # mcp-proxy against support/fake_mcp_server.py
-├── support/           # Test helpers that are not scanner fixtures
-└── fixtures/          # Test project fixtures
-    ├── openai-hello-world/
-    └── anthropic-hello-world/
-```
-
-## Setup
-
-Requires Rust toolchain. Install via [rustup](https://rustup.rs/).
-
-```bash
-cargo build
-```
-
-**Enable the tracked git hooks once per clone** — git will not turn on a repo's
-own hooks for you:
+Once per clone, because git never turns on a repo's own hooks for you:
 
 ```bash
 git config core.hooksPath .githooks
@@ -54,93 +32,42 @@ git config promptguard.pushGate true    # optional: also run `make ci` on push
 scoped to that range on purpose: this repo is public, so a credential on `main`
 is world-readable at once, while scanning the whole tree or the history fails on
 its first run and teaches everyone `--no-verify`. Fixtures that are meant to
-look like credentials — the env-var redaction tests — are exempted by path in
-`.gitleaks.toml`, where the exemption is reviewable. `make ci` is opt-in
-because fmt-check + clippy + test + build is minutes on this workspace.
+look like credentials (the env-var redaction tests) are exempted by path in
+`.gitleaks.toml`, where the exemption is reviewable. The `make ci` push gate is
+opt-in because fmt-check + clippy + test + build takes minutes on this workspace.
 
-## Building and Testing
+## Checks
 
-```bash
-cargo build                          # Debug build
-cargo build --release                # Release build
-cargo test                           # All tests
-cargo test --test command_tests      # Single test file
-cargo test test_name -- --nocapture  # Single test with output
+The `Makefile` is the source of truth for commands (`make help`). After editing
+Rust, run `make format` and `make lint`, and leave clippy at zero warnings
+(`make lint` treats them as errors across all targets). Run `make ci` before
+pushing; it is what CI runs.
 
-# Via Makefile
-make build
-make test
-make release
-make ci                              # fmt-check + lint + test + build
-```
+## Coding standards
 
-## Code Quality
-
-```bash
-make format                          # rustfmt
-make lint                            # Clippy with -D warnings
-make fmt-check                       # Check formatting without modifying
-
-# Or directly
-cargo fmt
-cargo clippy -- -D warnings
-```
-
-Always run `cargo fmt` and `cargo clippy` after editing Rust files.
-
-## Coding Standards
-
-- Rust 2021 edition
-- Clippy lints configured in `Cargo.toml` under `[lints.*]`
-- Use `clap` derive macros for CLI argument parsing
-- Error handling: use `anyhow::Result` for application errors, custom error types for library code
-- Tests go in `tests/` as integration tests, not inline `#[cfg(test)]` modules (unless testing private functions)
-- Test fixtures in `tests/fixtures/` are real project directories used by the scanner
+- CLI arguments use `clap` derive macros.
+- Application errors return `anyhow::Result`; library code uses custom error
+  types (`thiserror`). The `[lints]` table in `Cargo.toml` denies `unwrap`,
+  `expect`, `panic!`, `exit` and `todo!`.
+- Tests go in `tests/` as integration tests. The one case for an inline
+  `#[cfg(test)]` module is testing a private function.
 
 ## API types are hand-written, deliberately
 
-`promptguard-python` and `promptguard-node` generate their API types from the
-published OpenAPI spec, on a weekly `sync-from-api.yml` that opens a PR when the
-spec moves. **This repo does not, and that is a decision, not an oversight.**
-Recorded 2026-08-11 after checking the spec rather than guessing.
+The API response structs in `src/commands/*.rs` are hand-written, and so are
+copies of backend value lists such as `VALID_PII_MODES`. Keep them that way:
+the published OpenAPI spec carries no enums worth generating and omits part of
+the CLI's surface. The structs derive `Deserialize` without
+`deny_unknown_fields`, so a removed or renamed field fails loudly in the
+integration tests. **Before adding or changing an API type, or proposing to
+generate them**, read `docs/adr/0003-hand-written-api-types.md` for the full
+reasoning and the conditions that would reopen it.
 
-The response structs live in `src/commands/*.rs` (`SecurityScanResponse`,
-`RedactResponse`, `GuardrailsResponse`, `LogsResponse`, `RedTeamTestResult`,
-and `mcp-proxy`'s `ToolValidation`, `GuardAnswer` and `ManifestScan`) and
-stay hand-written, because generating them would cost machinery and return
-nothing:
+## Commit messages
 
-- **The spec does not carry the information worth generating.** The one field
-  where a generated type would help is `threatType`, and in
-  `openapi-developer.json` it is `{"anyOf": [{"type": "string"}, {"type":
-  "null"}]}` — no enum. The real values live in the backend's `ThreatType`
-  StrEnum and never reach the published spec. A generator would emit
-  `Option<String>`, which is what `SecurityScanResponse` already declares by
-  hand. Same for `decision` and `reason`: bare strings.
-- **Part of the surface is not in the published spec at all.** `promptguard
-  redteam` calls `/internal/redteam/*`, which is internal-domain and appears
-  only in the full `openapi.json` — a spec that is `.mintignore`d and not served
-  publicly. `/health` is in neither spec. A sync would cover some endpoints and
-  silently skip others, which is worse than covering none: it reads as complete.
-- **The surface is small and slow.** Seven endpoints, and the structs pin the
-  serde renames (`threatType`, `eventId`, `processingTimeMs`, `piiFound`) that
-  the wire format actually uses. Those renames are the part that breaks, and a
-  generator would reproduce them from the same spec that already agrees.
-
-**What protects this repo instead:** the structs are `#[derive(Deserialize)]`
-without `deny_unknown_fields`, so an added field is ignored and a *removed* or
-renamed one fails at parse time in the integration tests — loudly, at the call
-site, in the repo that owns the code.
-
-**Revisit this if** the developer spec starts publishing real enums for
-`threatType`/`decision`, or the CLI's endpoint count grows past a handful of
-hand-maintainable structs. At that point copy the SDKs' `sync-from-api.yml`
-wholesale; do not invent a second mechanism.
-
-## Commit Messages
-
-- Imperative mood: "Add X" not "Added X"
-- Focus on what changed from the user's perspective
+Imperative mood after the conventional type prefix `git log` shows
+(`fix: Add X`, not `Added X`), describing what changed from the user's
+perspective.
 
 ## Boundaries
 
@@ -149,10 +76,10 @@ wholesale; do not invent a second mechanism.
 - Changing the CLI interface (subcommands, flags, output format)
 - Modifying Tree-sitter grammar usage
 
-### Never
-- Commit API keys, tokens, or credentials
-- Break the CLI interface without a major version bump
-- Skip `cargo clippy` warnings
+### Hard rules
+- Keep API keys, tokens and credentials out of commits; the pre-push hook
+  backs this up but only if it is enabled.
+- A breaking change to the CLI interface ships only with a major version bump.
 
 ## Agent skills
 
