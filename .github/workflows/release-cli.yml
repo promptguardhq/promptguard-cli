@@ -228,3 +228,24 @@ jobs:
           prerelease: ${{ steps.get_version.outputs.PRERELEASE }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Tells Slack #releases this version's binaries are out (ADR-0038 in the
+  # platform repo). It cannot fail the release: the job is continue-on-error
+  # and post-release.sh exits 0 on every failure, with a warning (an unset
+  # SLACK_RELEASES_WEBHOOK_URL included).
+  announce:
+    name: Announce in #releases
+    needs: release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          sparse-checkout: scripts
+      - name: Post to #releases
+        env:
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+        run: |
+          scripts/post-release.sh "CLI" "v${GITHUB_REF_NAME#cli-v}" \
+            "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${GITHUB_REF_NAME}"

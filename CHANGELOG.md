@@ -9,8 +9,16 @@ this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 a dated version section when a release goes out — an `Unreleased` block that
 survives three releases is a changelog nobody is maintaining.
 
-
 ## [Unreleased]
+
+### Added
+
+- **Every release is announced in Slack `#releases`.** The release workflow's
+  new `announce` job posts the version and its GitHub Release once the
+  release job has published it, through `scripts/post-release.sh`, a copy of
+  the platform repo's script. It reads the `SLACK_RELEASES_WEBHOOK_URL`
+  secret, and an unset secret or a Slack failure is a warning, never a failed
+  release. The GitHub Release body was already this file's section.
 
 ### Changed
 
@@ -197,7 +205,6 @@ and testing.
 - **rustls 0.23.45, for RUSTSEC-2026-0285.** The TLS stack every HTTP call in
   this CLI goes through. Published so the released binaries carry the patched
   version rather than only the source tree.
-
 
 ## [2.1.0] - 2026-09-06
 
