@@ -1,7 +1,7 @@
 //! Tool-list pins: what each wrapped server's `tools/list` was the first time
 //! the proxy scanned it, kept in `~/.promptguard/mcp-pins.json`.
 //!
-//! The manifest-scan endpoint is stateless (acebot712/promptguard#942): it
+//! The manifest-scan endpoint is stateless (promptguardhq/promptguard#942): it
 //! returns a pin for the list it scanned and compares the list against the
 //! pin it is sent. Keeping the pin is the caller's job, so it lives here, on
 //! the developer's machine, one per server.

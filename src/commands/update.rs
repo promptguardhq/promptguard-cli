@@ -5,7 +5,7 @@ use serde::Deserialize;
 use std::time::Duration;
 
 const GITHUB_API_URL: &str =
-    "https://api.github.com/repos/acebot712/promptguard-cli/releases/latest";
+    "https://api.github.com/repos/promptguardhq/promptguard-cli/releases/latest";
 
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
@@ -110,7 +110,7 @@ impl UpdateCommand {
                 Output::warning(&format!("Could not check for updates: {e}"));
                 println!();
                 println!("You can manually check for updates at:");
-                println!("  https://github.com/acebot712/promptguard-cli/releases");
+                println!("  https://github.com/promptguardhq/promptguard-cli/releases");
                 println!();
                 self.print_update_instructions(None);
             },
@@ -158,7 +158,7 @@ impl UpdateCommand {
 /// named when it is known. install.sh is a POSIX shell script, so Windows is
 /// sent to the release binary instead.
 fn update_instructions(latest_tag: Option<&str>, windows: bool) -> String {
-    const REPO: &str = "https://github.com/acebot712/promptguard-cli";
+    const REPO: &str = "https://github.com/promptguardhq/promptguard-cli";
     let tag = latest_tag.unwrap_or("cli-v<version>");
     let first = if windows {
         format!(
@@ -168,7 +168,7 @@ fn update_instructions(latest_tag: Option<&str>, windows: bool) -> String {
         )
     } else {
         "  • Using curl (recommended):\n      \
-         curl -fsSL https://raw.githubusercontent.com/acebot712/promptguard-cli/main/install.sh | sh\n\n"
+         curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/install.sh | sh\n\n"
             .to_string()
     };
     format!(
@@ -213,13 +213,13 @@ mod tests {
     }
 
     /// No Homebrew tap and no crates.io crate exist, so `update` must not
-    /// send anyone to either (acebot712/promptguard#962).
+    /// send anyone to either (promptguardhq/promptguard#962).
     #[test]
     fn update_instructions_offer_only_published_methods() {
         let known = update_instructions(Some("cli-v2.2.0"), false);
         assert!(!known.to_lowercase().contains("brew"));
         assert!(known.contains(
-            "cargo install --locked --force --git https://github.com/acebot712/promptguard-cli --tag cli-v2.2.0"
+            "cargo install --locked --force --git https://github.com/promptguardhq/promptguard-cli --tag cli-v2.2.0"
         ));
         assert!(!known.contains("--force promptguard"));
         assert!(update_instructions(None, false).contains("--tag cli-v<version>"));
@@ -236,7 +236,7 @@ mod tests {
             "{windows}"
         );
         assert!(
-            windows.contains("https://github.com/acebot712/promptguard-cli/releases/latest"),
+            windows.contains("https://github.com/promptguardhq/promptguard-cli/releases/latest"),
             "{windows}"
         );
         // The cargo route works on Windows too.

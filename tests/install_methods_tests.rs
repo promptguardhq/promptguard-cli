@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const REPO_URL: &str = "https://github.com/acebot712/promptguard-cli";
+const REPO_URL: &str = "https://github.com/promptguardhq/promptguard-cli";
 
 fn repo_file(rel: &str) -> String {
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);

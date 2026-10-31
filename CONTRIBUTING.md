@@ -11,7 +11,7 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/acebot712/promptguard-cli.git
+git clone https://github.com/promptguardhq/promptguard-cli.git
 cd promptguard-cli
 make setup              # Enable the tracked git hooks (core.hooksPath=.githooks)
 make build              # Build debug binary
@@ -147,7 +147,7 @@ rustup target add x86_64-apple-darwin aarch64-apple-darwin x86_64-unknown-linux-
 
 ## Reporting Issues
 
-Open an issue at https://github.com/acebot712/promptguard-cli/issues with:
+Open an issue at https://github.com/promptguardhq/promptguard-cli/issues with:
 
 - OS and architecture
 - Rust toolchain version (`rustc --version`)

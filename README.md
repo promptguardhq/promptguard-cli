@@ -1,5 +1,5 @@
-[![CI](https://github.com/acebot712/promptguard-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/acebot712/promptguard-cli/actions/workflows/ci.yml)
-[![License](https://img.shields.io/github/license/acebot712/promptguard-cli)](https://github.com/acebot712/promptguard-cli/blob/main/LICENSE)
+[![CI](https://github.com/promptguardhq/promptguard-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/promptguardhq/promptguard-cli/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/promptguardhq/promptguard-cli)](https://github.com/promptguardhq/promptguard-cli/blob/main/LICENSE)
 [![Rust](https://img.shields.io/badge/Built_with-Rust-orange)](https://www.rust-lang.org/)
 
 # PromptGuard CLI
@@ -15,9 +15,9 @@ A single 8–10 MB binary (8.3 MB on macOS ARM64 as of v2.2.3). No runtime inter
 
 | Method | Command |
 |--------|---------|
-| **Shell script** (macOS, Linux x86_64) | `curl -fsSL https://raw.githubusercontent.com/acebot712/promptguard-cli/main/install.sh \| sh` |
-| **Binary** | Download from [GitHub Releases](https://github.com/acebot712/promptguard-cli/releases/latest) |
-| **Cargo** (build from source) | `cargo install --locked --git https://github.com/acebot712/promptguard-cli --tag cli-v2.2.3` |
+| **Shell script** (macOS, Linux x86_64) | `curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/install.sh \| sh` |
+| **Binary** | Download from [GitHub Releases](https://github.com/promptguardhq/promptguard-cli/releases/latest) |
+| **Cargo** (build from source) | `cargo install --locked --git https://github.com/promptguardhq/promptguard-cli --tag cli-v2.2.3` |
 
 Every release publishes these prebuilt binaries, each with a `.sha256` checksum
 beside it (the shell script verifies it before installing):
@@ -486,7 +486,7 @@ src/
 ## Uninstallation
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/acebot712/promptguard-cli/main/uninstall.sh | sh
+curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/uninstall.sh | sh
 ```
 
 Or manually: `sudo rm /usr/local/bin/promptguard && rm -rf ~/.promptguard`

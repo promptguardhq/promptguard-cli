@@ -1,6 +1,6 @@
 #!/bin/sh
 # PromptGuard CLI uninstaller
-# Usage: curl -fsSL https://raw.githubusercontent.com/acebot712/promptguard-cli/main/uninstall.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/uninstall.sh | sh
 
 set -e
 
@@ -111,5 +111,5 @@ fi
 echo ""
 echo "${GREEN}✓ PromptGuard CLI uninstalled successfully${NC}"
 echo ""
-echo "To reinstall, visit: https://github.com/acebot712/promptguard-cli"
+echo "To reinstall, visit: https://github.com/promptguardhq/promptguard-cli"
 echo ""

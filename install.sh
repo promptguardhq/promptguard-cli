@@ -1,6 +1,6 @@
 #!/bin/sh
 # PromptGuard CLI installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/acebot712/promptguard-cli/main/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/install.sh | sh
 
 set -e
 
@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 # Repository
-REPO="acebot712/promptguard-cli"
+REPO="promptguardhq/promptguard-cli"
 RELEASE_URL="https://github.com/$REPO/releases/latest/download"
 
 echo "${GREEN}PromptGuard CLI Installer${NC}"
@@ -159,4 +159,4 @@ echo "  4. View help:            promptguard --help"
 echo ""
 echo "Documentation: https://docs.promptguard.co/cli"
 echo ""
-echo "To uninstall: curl -fsSL https://raw.githubusercontent.com/acebot712/promptguard-cli/main/uninstall.sh | sh"
+echo "To uninstall: curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/uninstall.sh | sh"

@@ -13,7 +13,7 @@ Drop-in LLM security for your applications - Built with Rust + Tree-sitter
 
 **One-line install (macOS/Linux)**:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/acebot712/promptguard-cli/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/install.sh | sh
 ```
 
 **Manual install**:
@@ -45,4 +45,4 @@ SHA256 checksums are provided for each binary (`.sha256` files).
 
 📖 **Documentation**: https://docs.promptguard.co/cli
 🏠 **Homepage**: https://promptguard.co
-🐛 **Issues**: https://github.com/acebot712/promptguard-cli/issues
+🐛 **Issues**: https://github.com/promptguardhq/promptguard-cli/issues
