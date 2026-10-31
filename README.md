@@ -9,7 +9,7 @@
 ![Rust](https://img.shields.io/badge/rust-stable-orange?logo=rust)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 
-Single 5.3MB binary. No runtime interpreter required. Real AST transformations. Under 10ms startup.
+A single 8–10 MB binary (8.3 MB on macOS ARM64 as of v2.2.3). No runtime interpreter required. Real AST transformations. Under 10ms startup.
 
 ## Installation
 
@@ -32,8 +32,6 @@ beside it (the shell script verifies it before installing):
 Any other platform, Linux ARM64 included, builds from source with the Cargo
 command, which needs a current stable Rust toolchain. It builds the release tag
 from this repository because the crate is not published to crates.io.
-
-> For an MCP-only install (no Rust required), use `pip install promptguard-mcp-server` instead.
 
 ## Quick Start
 
@@ -66,12 +64,12 @@ promptguard mcp -t stdio                           # Start MCP server
 | `login` / `logout` | Authenticate with PromptGuard cloud |
 | `whoami` | Show current authenticated user |
 | `projects` | `list` / `select` active project |
-| `config` | View or update local configuration |
+| `config` | View the project configuration (read-only; re-run `init` or edit `.promptguard.json` to change it) |
 | `key` | Manage API keys |
 | `dashboard` | Open the PromptGuard dashboard in browser |
 | `redact` | Redact PII from text |
 | `test` | Run a quick connectivity and detection test |
-| `update` | Update the CLI to latest version |
+| `update` | Check GitHub for a newer release and print how to install it (does not install anything) |
 
 ## Offline Scan for CI
 
@@ -135,7 +133,9 @@ promptguard mcp -t stdio
 |-----------|---------|-------|
 | **stdio** | `promptguard mcp -t stdio` | Default, used by all editors |
 
-For Streamable HTTP transport, use the [standalone Python server](https://github.com/acebot712/promptguard/tree/main/mcp-server) (`pip install promptguard-mcp-server`).
+stdio is the only transport. There is no HTTP transport and no separate Python
+MCP server: the old `promptguard-mcp-server` package on PyPI is no longer
+maintained, so do not install it.
 
 ### Available Tools
 
@@ -425,12 +425,14 @@ const openai = new OpenAI({
 **After `promptguard init`:**
 ```typescript
 const openai = new OpenAI({
-  apiKey: process.env.PROMPTGUARD_API_KEY,
+  apiKey: process.env.OPENAI_API_KEY,
   baseURL: "https://api.promptguard.co/api/v1"
 });
 ```
 
-All LLM requests now flow through PromptGuard's six-layer security pipeline.
+`init` adds `baseURL` and leaves your provider key where it was. It also writes
+`PROMPTGUARD_API_KEY` to `.env`, creates `.promptguard.json`, and adds both files
+to `.gitignore`. Run `promptguard verify` afterwards to confirm the setup.
 
 ### Supported Providers
 
@@ -462,7 +464,7 @@ Global credentials are stored in `~/.promptguard/credentials.json`. Project-leve
 
 ```bash
 cargo build              # Debug build
-cargo build --release    # Optimized release (5.3MB)
+cargo build --release    # Optimized, stripped release binary (8-10 MB)
 cargo test               # Run tests
 ```
 

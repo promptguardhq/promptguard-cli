@@ -75,7 +75,7 @@ impl TestCommand {
         println!("\nNext steps:");
         println!("  • Run your application");
         println!("  • Monitor requests: https://app.promptguard.co/dashboard");
-        println!("  • View logs: promptguard logs");
+        println!("  • Full integration check: promptguard verify");
 
         Ok(())
     }
