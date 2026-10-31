@@ -2,7 +2,7 @@
 name = "promptguard"
 version = "2.2.3"
 edition = "2021"
-authors = ["PromptGuard <hello@promptguard.co>"]
+authors = ["PromptGuard <support@promptguard.co>"]
 description = "Drop-in LLM security for your applications"
 license = "Apache-2.0"
 repository = "https://github.com/acebot712/promptguard-cli"

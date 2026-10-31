@@ -12,6 +12,11 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+### Changed
+
+- The crate's author contact is now `support@promptguard.co`. `hello@promptguard.co`
+  never existed, so mail to the address shown on crates.io bounced.
+
 ## [2.2.3] - 2026-10-23
 
 ### Security
