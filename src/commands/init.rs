@@ -296,8 +296,8 @@ impl InitCommand {
             Output::success("PromptGuard is now active!");
             println!("\nNext steps:");
             println!("  • Run your app normally - all LLM requests now go through PromptGuard");
-            println!("  • View logs: promptguard logs");
-            println!("  • Check dashboard: https://app.promptguard.co/dashboard");
+            println!("  • Confirm it works: promptguard verify");
+            println!("  • View activity:    https://app.promptguard.co/dashboard");
             println!("\nManaging PromptGuard:");
             println!("  • Pause protection:  promptguard disable");
             println!("  • Remove entirely:   promptguard revert");

@@ -12,6 +12,12 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`init` and `test` no longer tell you to run `promptguard logs`**, a command
+  that does not exist. They now suggest `promptguard verify`, and a test fails
+  if any message in the source names a subcommand the CLI does not have (#59).
+
 ## [2.2.3] - 2026-10-23
 
 ### Security
