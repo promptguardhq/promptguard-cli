@@ -501,7 +501,7 @@ Or manually: `sudo rm /usr/local/bin/promptguard && rm -rf ~/.promptguard`
   source.
 - **API version:** the CLI calls PromptGuard's `/api/v1` API
   (`https://api.promptguard.co/api/v1` unless you set `PROMPTGUARD_BASE_URL`).
-- **Previous major version:** The 12-month security-fix window for a previous major version on that page is promised for the Python and Node.js SDKs, not for the CLI: security fixes ship in a new release, so stay on the latest one. Moving from 1.x:
+- **Previous major version:** The 12-month security-fix window for a previous major version, which [Versioning & support](https://docs.promptguard.co/versioning-and-support#sdks) promises, covers the Python and Node.js SDKs, not the CLI: security fixes ship in a new release, so stay on the latest one. Moving from 1.x:
   [Upgrade to SDK and CLI 2.0](https://docs.promptguard.co/releases/sdk-v2-upgrade).
 
 The full policy: [Versioning & support](https://docs.promptguard.co/versioning-and-support).
