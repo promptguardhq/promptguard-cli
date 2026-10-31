@@ -491,6 +491,21 @@ curl -fsSL https://raw.githubusercontent.com/acebot712/promptguard-cli/main/unin
 
 Or manually: `sudo rm /usr/local/bin/promptguard && rm -rf ~/.promptguard`
 
+## Versioning and support
+
+- **Versions** follow [semantic versioning](https://semver.org): a command or
+  flag is removed or renamed only in a new major version, and every change is
+  in [`CHANGELOG.md`](./CHANGELOG.md). Releases are tagged `cli-vX.Y.Z`.
+- **Platforms:** the prebuilt binaries in [Installation](#installation) (macOS
+  ARM64 and x86_64, Linux x86_64, Windows x86_64); anything else builds from
+  source.
+- **API version:** the CLI calls PromptGuard's `/api/v1` API
+  (`https://api.promptguard.co/api/v1` unless you set `PROMPTGUARD_BASE_URL`).
+- **Previous major version:** The 12-month security-fix window for a previous major version on that page is promised for the Python and Node.js SDKs, not for the CLI: security fixes ship in a new release, so stay on the latest one. Moving from 1.x:
+  [Upgrade to SDK and CLI 2.0](https://docs.promptguard.co/releases/sdk-v2-upgrade).
+
+The full policy: [Versioning & support](https://docs.promptguard.co/versioning-and-support).
+
 ## Links
 
 - [Documentation](https://docs.promptguard.co/tools/cli)
