@@ -13,6 +13,8 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+## [2.2.4] - 2026-11-03
+
 ### Added
 
 - **Every release is announced in Slack `#releases`.** The release workflow's
@@ -26,12 +28,22 @@ survives three releases is a changelog nobody is maintaining.
 
 - The crate's author contact is now `support@promptguard.co`. `hello@promptguard.co`
   never existed, so mail to the address shown on crates.io bounced.
+- The crate's `repository` and the README's install commands point at
+  `github.com/promptguardhq/promptguard-cli`, where the repository now lives.
+- Dependencies: `serde_json` 1.0.154, `icu_normalizer` 2.4.0, `open` 5.4.5 and
+  `aws-lc-rs` 1.19.0 (#61).
 
 ### Fixed
 
 - **`init` and `test` no longer tell you to run `promptguard logs`**, a command
   that does not exist. They now suggest `promptguard verify`, and a test fails
   if any message in the source names a subcommand the CLI does not have (#59).
+
+### Security
+
+- **tokio 1.51.6** (RUSTSEC-2026-0386): 1.51.1's safe `AsyncFd` constructors
+  let safe code violate I/O safety. The CLI never constructs an `AsyncFd`;
+  the lockfile bump clears the advisory (#58).
 
 ## [2.2.3] - 2026-10-23
 
