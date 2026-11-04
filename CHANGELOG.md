@@ -13,6 +13,23 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+### Added
+
+- **`promptguard mcp` speaks MCP 2026-07-28 and 2025-11-25.** A 2026-07-28
+  client needs no `initialize`: each request names its revision in `_meta`,
+  `server/discover` answers with every revision the server speaks (2026-07-28,
+  2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05), its capabilities and its
+  identity, and a revision it does not speak gets `-32022`
+  (`UnsupportedProtocolVersionError`) with that list. Those results carry
+  `resultType`, the server's identity in `_meta`, and, for `tools/list` and
+  `server/discover`, `ttlMs` and `cacheScope`; `ping` and `logging/setLevel`,
+  which 2026-07-28 removed, are unknown methods there. Older clients still
+  open with `initialize`, which now also agrees on 2025-11-25.
+- **`promptguard_scan_text` takes `content_type`** (`prompt`, the default, or
+  `response`), so an agent can scan a model's output as well as a prompt. It is
+  sent to the API as the scan `type`; any other value is a tool error the model
+  can correct.
+
 ### Security
 
 - **`promptguard mcp` no longer takes an API key through the chat.**
@@ -36,6 +53,14 @@ survives three releases is a changelog nobody is maintaining.
   redact, scan-project and status tools declare an `outputSchema` and return
   `structuredContent`. Calling a tool that does not exist is now a JSON-RPC
   `-32602` error rather than a tool result.
+- **The shared MCP tools match the hosted server's exactly.** `scan_text`,
+  `redact` and `status` now carry the hosted server's title, description,
+  parameters and annotations: `scan_text` and `redact` are read-only (each
+  call is still one metered Request, which their descriptions now say), and
+  `tests/mcp-tool-definitions.json`, a copy of the platform's published tool
+  manifest, fails a test on any drift. Every tool's `inputSchema` sets
+  `additionalProperties: false`, and an undeclared argument is now a tool error
+  naming it instead of being ignored.
 
 ## [2.2.4] - 2026-11-03
 

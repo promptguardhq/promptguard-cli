@@ -143,16 +143,30 @@ maintained, so do not install it.
 |------|------------|-------------|
 | `promptguard_auth` | — | Check authentication; if missing, open the dashboard to get a key. Save it with `promptguard login`, never in the chat |
 | `promptguard_logout` | — | Clear local credentials |
-| `promptguard_scan_text` | `text` (required) | Scan text for security threats |
+| `promptguard_scan_text` | `text` (required), `content_type` (`prompt`, the default, or `response`) | Scan text for security threats; `response` scans a model's output instead of a prompt |
 | `promptguard_scan_project` | `directory`, `provider` (optional) | Scan codebase for unprotected LLM SDK usage |
 | `promptguard_redact` | `text` (required) | Redact PII from text (returns the redacted text only) |
-| `promptguard_status` | — | Check config and API connectivity |
+| `promptguard_status` | — | Show the configuration, key type and CLI version |
 
-The server speaks MCP revisions 2025-06-18, 2025-03-26 and 2024-11-05, and
-answers `initialize` with the one the client asks for. Each tool carries
-behaviour annotations (`promptguard_logout` is the one destructive tool), and
-the scan, redact and status tools return `structuredContent` that matches their
-declared `outputSchema`.
+`promptguard_scan_text` and `promptguard_redact` each count as one Request on
+your plan. A tool rejects a parameter it does not declare, so a misspelt one is
+reported rather than ignored.
+
+The three tools the hosted server also serves (`scan_text`, `redact`, `status`)
+have the same title, description, parameters and annotations in both:
+`tests/mcp-tool-definitions.json` is a copy of the platform's published tool
+manifest, and a test fails if the CLI drifts from it.
+
+The server speaks MCP revisions 2026-07-28, 2025-11-25, 2025-06-18, 2025-03-26
+and 2024-11-05. A 2026-07-28 client needs no handshake: each request names
+its revision in `_meta`, `server/discover` lists the revisions, capabilities and
+server identity, and a revision the server does not speak gets
+`UnsupportedProtocolVersionError` (`-32022`) listing the ones it does. An older
+client still opens with `initialize`, which answers with the revision the
+client asks for. Each tool carries behaviour annotations
+(`promptguard_logout` is the one destructive tool), and the scan, redact and
+status tools return `structuredContent` that matches their declared
+`outputSchema`.
 
 ### Client Configuration
 

@@ -37,14 +37,38 @@ struct JsonRpcResponse {
 struct JsonRpcError {
     code: i64,
     message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data: Option<serde_json::Value>,
 }
 
 /// JSON-RPC "invalid params": what MCP answers for a `tools/call` naming a
-/// tool the server does not have. An argument the model got wrong is a tool
-/// result with `isError` instead, so the model can read it and retry.
+/// tool the server does not have, or for a request missing a required field.
+/// An argument the model got wrong is a tool result with `isError` instead,
+/// so the model can read it and retry (spec 2025-11-25 and 2026-07-28,
+/// server/tools "Error Handling").
 const INVALID_PARAMS: i64 = -32602;
 const METHOD_NOT_FOUND: i64 = -32601;
 const PARSE_ERROR: i64 = -32700;
+/// `UnsupportedProtocolVersionError` (spec 2026-07-28, basic "Error Codes"
+/// and basic/versioning "Protocol Version Negotiation").
+const UNSUPPORTED_PROTOCOL_VERSION: i64 = -32022;
+
+/// A protocol error before it is tied to a request id.
+struct ProtocolError {
+    code: i64,
+    message: String,
+    data: Option<serde_json::Value>,
+}
+
+impl ProtocolError {
+    fn new(code: i64, message: String) -> Self {
+        Self {
+            code,
+            message,
+            data: None,
+        }
+    }
+}
 
 impl JsonRpcResponse {
     fn success(id: serde_json::Value, result: serde_json::Value) -> Self {
@@ -57,36 +81,160 @@ impl JsonRpcResponse {
     }
 
     fn error(id: serde_json::Value, code: i64, message: String) -> Self {
+        Self::failure(id, ProtocolError::new(code, message))
+    }
+
+    fn failure(id: serde_json::Value, error: ProtocolError) -> Self {
         Self {
             jsonrpc: "2.0".to_string(),
             id,
             result: None,
-            error: Some(JsonRpcError { code, message }),
+            error: Some(JsonRpcError {
+                code: error.code,
+                message: error.message,
+                data: error.data,
+            }),
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// Protocol version negotiation
+// Protocol versions: one dual-era server
 // ---------------------------------------------------------------------------
+//
+// Spec 2026-07-28 (basic/versioning) splits revisions into two eras:
+//
+// - Modern (2026-07-28 and later): no handshake. Every request names its
+//   revision in `_meta["io.modelcontextprotocol/protocolVersion"]`, and the
+//   server accepts or rejects each request on its own.
+// - Legacy (2025-11-25 and earlier): an `initialize` handshake picks the
+//   revision for the life of the stdio process.
+//
+// This server is "dual-era" in the spec's sense ("Backward Compatibility with
+// Initialization-Based Versions"): a request carrying the modern `_meta`
+// field is served statelessly under 2026-07-28, and `initialize` selects
+// legacy semantics.
 
-/// MCP revisions this server speaks, newest first. `initialize` answers with
-/// the client's requested revision when it is one of these, and with the
-/// newest otherwise, as the lifecycle spec asks; the client then decides
-/// whether it can continue. Nothing here depends on a feature newer than the
-/// first entry: `structuredContent` and `outputSchema` arrived in 2025-06-18,
-/// and an older client ignores fields it does not know.
-const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+/// Stateless revisions this server speaks, newest first.
+const MODERN_PROTOCOL_VERSIONS: &[&str] = &["2026-07-28"];
+
+/// Handshake revisions `initialize` can agree on, newest first. `initialize`
+/// answers with the client's requested revision when it is one of these, and
+/// with the newest otherwise, as the 2025-11-25 lifecycle page asks; the
+/// client then decides whether it can continue. The same answers serve every
+/// entry: `structuredContent` and `outputSchema` arrived in 2025-06-18, and an
+/// older client ignores fields it does not know. 2025-11-25 adds nothing a
+/// tools-only stdio server must do: `icons`, `Implementation.description` and
+/// tasks are optional, and its one tools change (input validation errors are
+/// tool results) is how this server already reports them.
+const HANDSHAKE_PROTOCOL_VERSIONS: &[&str] =
+    &["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
+
+/// Every revision this server speaks, newest first: what `server/discover`
+/// and `UnsupportedProtocolVersionError` list.
+fn supported_protocol_versions() -> Vec<&'static str> {
+    MODERN_PROTOCOL_VERSIONS
+        .iter()
+        .chain(HANDSHAKE_PROTOCOL_VERSIONS)
+        .copied()
+        .collect()
+}
+
+/// Reserved `_meta` keys (spec 2026-07-28, basic "`_meta`").
+const META_PROTOCOL_VERSION: &str = "io.modelcontextprotocol/protocolVersion";
+const META_CLIENT_CAPABILITIES: &str = "io.modelcontextprotocol/clientCapabilities";
+const META_SERVER_INFO: &str = "io.modelcontextprotocol/serverInfo";
+
+/// How long a client may treat `tools/list` and `server/discover` as fresh
+/// (spec 2026-07-28, server/utilities/caching). Both are compiled into the
+/// binary and only change with an upgrade, which restarts the process.
+const CACHE_TTL_MS: u64 = 3_600_000;
 
 fn negotiate_protocol_version(params: &serde_json::Value) -> &'static str {
     let requested = params
         .get("protocolVersion")
         .and_then(serde_json::Value::as_str);
-    SUPPORTED_PROTOCOL_VERSIONS
+    HANDSHAKE_PROTOCOL_VERSIONS
         .iter()
         .copied()
         .find(|v| Some(*v) == requested)
-        .unwrap_or(SUPPORTED_PROTOCOL_VERSIONS[0])
+        .unwrap_or(HANDSHAKE_PROTOCOL_VERSIONS[0])
+}
+
+/// Which semantics a request is served under.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Era {
+    /// No per-request revision, or a handshake revision: served as the
+    /// handshake revisions define, as before.
+    Legacy,
+    /// A stateless revision named in `_meta`.
+    Modern,
+}
+
+fn server_info() -> serde_json::Value {
+    serde_json::json!({
+        "name": "promptguard",
+        "title": "PromptGuard",
+        "version": env!("CARGO_PKG_VERSION"),
+    })
+}
+
+fn server_capabilities() -> serde_json::Value {
+    // Tools only. `logging` used to be advertised with no `logging/setLevel`
+    // behind it, so a client that took the capability at its word got
+    // "method not found".
+    serde_json::json!({ "tools": { "listChanged": false } })
+}
+
+/// Read the era from the request's `_meta`.
+///
+/// - No `io.modelcontextprotocol/protocolVersion`: legacy, as every request
+///   from a handshake client is.
+/// - A stateless revision this server speaks: modern, once the other
+///   required field, `io.modelcontextprotocol/clientCapabilities`, is there.
+///   A request missing it is malformed and gets `-32602` (spec 2026-07-28,
+///   basic "`_meta`", per-request protocol fields).
+/// - A handshake revision: legacy. Those revisions define no per-request
+///   version, so this is the conservative reading: serve it as a handshake
+///   server would, which ignores `_meta`. Rejecting it would contradict the
+///   `supported` list, which names it.
+/// - Anything else: `UnsupportedProtocolVersionError` listing every revision
+///   this server speaks (spec 2026-07-28, basic/versioning "Protocol Version
+///   Negotiation": "MUST respond with an `UnsupportedProtocolVersionError`").
+fn request_era(params: &serde_json::Value) -> std::result::Result<Era, ProtocolError> {
+    let meta = params.get("_meta");
+    let Some(requested) = meta.and_then(|m| m.get(META_PROTOCOL_VERSION)) else {
+        return Ok(Era::Legacy);
+    };
+    let Some(requested) = requested.as_str() else {
+        return Err(ProtocolError::new(
+            INVALID_PARAMS,
+            format!("_meta[\"{META_PROTOCOL_VERSION}\"] must be a string"),
+        ));
+    };
+    if MODERN_PROTOCOL_VERSIONS.contains(&requested) {
+        let has_capabilities = meta
+            .and_then(|m| m.get(META_CLIENT_CAPABILITIES))
+            .is_some_and(serde_json::Value::is_object);
+        if !has_capabilities {
+            return Err(ProtocolError::new(
+                INVALID_PARAMS,
+                format!("Missing required _meta[\"{META_CLIENT_CAPABILITIES}\"] object"),
+            ));
+        }
+        return Ok(Era::Modern);
+    }
+    if HANDSHAKE_PROTOCOL_VERSIONS.contains(&requested) {
+        return Ok(Era::Legacy);
+    }
+    Err(ProtocolError {
+        code: UNSUPPORTED_PROTOCOL_VERSION,
+        message: "Unsupported protocol version".to_string(),
+        data: Some(serde_json::json!({
+            "supported": supported_protocol_versions(),
+            "requested": requested,
+        })),
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -177,19 +325,24 @@ fn status_output_schema() -> serde_json::Value {
     })
 }
 
+/// The tools `tools/list` serves, in a fixed order (spec 2026-07-28,
+/// server/tools asks for a deterministic one).
+///
+/// The three tools the hosted server also serves (`scan_text`, `redact`,
+/// `status`) carry the platform's `title`, `description`, `inputSchema` and
+/// `annotations` exactly: `tests/mcp-tool-definitions.json` is a byte copy of
+/// the platform's published manifest, and `tests/mcp_tool_manifest_tests.rs`
+/// fails on any drift. Change a shared tool in the platform first.
 fn tool_definitions() -> serde_json::Value {
-    // Annotations match the hosted server's (`chatgpt/mcp_server.py` in the
-    // platform repo) for the tools both serve. `scan_text` and `redact` are
-    // not read-only because each call is a metered Request on the account.
-    serde_json::json!({
-        "tools": [
+    serde_json::json!([
             {
                 "name": "promptguard_auth",
                 "title": "Connect PromptGuard",
                 "description": "Check whether PromptGuard is authenticated, and if not, open the PromptGuard dashboard so the user can create an API key. This tool never takes the key itself: the user saves it outside the chat, by running `promptguard login` in a terminal or by setting PROMPTGUARD_API_KEY in this MCP server's configuration. Never ask the user to paste an API key into the conversation.\nWhen to use: When any other promptguard tool reports that the user is not authenticated or not initialized, or when the user asks to log in to PromptGuard.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {}
+                    "properties": {},
+                    "additionalProperties": false
                 },
                 "annotations": {
                     "readOnlyHint": true,
@@ -204,7 +357,8 @@ fn tool_definitions() -> serde_json::Value {
                 "description": "Log out of PromptGuard by removing the project-local configuration (.promptguard.json) and the globally stored API key (~/.promptguard/credentials.json).\nWhen to use: When the user wants to switch PromptGuard accounts, clear credentials, or ensure a clean state by removing existing authentication.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {}
+                    "properties": {},
+                    "additionalProperties": false
                 },
                 "annotations": {
                     "readOnlyHint": false,
@@ -216,20 +370,27 @@ fn tool_definitions() -> serde_json::Value {
             {
                 "name": "promptguard_scan_text",
                 "title": "Scan text for threats",
-                "description": "Scan text for security threats (prompt injection, jailbreaks, PII leakage, toxic content) via the PromptGuard API. Returns a decision (allow/block), confidence score, threat type, and reason.\nWhen to use: When reviewing user-facing prompts, testing LLM inputs for safety, or verifying that content is free of injection attacks before sending to an LLM.",
+                "description": "Scan text for security threats including prompt injection, jailbreaks, PII leakage, and toxic content. Returns a decision (allow/block), confidence score, threat type, and reason. Each call counts as one Request on your PromptGuard plan.\nWhen to use: When reviewing user-facing prompts, testing LLM inputs for safety, or verifying that content is free of injection attacks before sending to an LLM.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "text": {
                             "type": "string",
                             "description": "The text content to scan for security threats"
+                        },
+                        "content_type": {
+                            "type": "string",
+                            "enum": SCAN_CONTENT_TYPES,
+                            "default": "prompt",
+                            "description": "Whether the text is a prompt sent to a model or a model's response"
                         }
                     },
-                    "required": ["text"]
+                    "required": ["text"],
+                    "additionalProperties": false
                 },
                 "outputSchema": scan_output_schema(),
                 "annotations": {
-                    "readOnlyHint": false,
+                    "readOnlyHint": true,
                     "destructiveHint": false,
                     "openWorldHint": false
                 }
@@ -249,7 +410,8 @@ fn tool_definitions() -> serde_json::Value {
                             "type": "string",
                             "description": "Filter results to a specific provider (e.g. 'openai', 'anthropic')"
                         }
-                    }
+                    },
+                    "additionalProperties": false
                 },
                 "outputSchema": scan_project_output_schema(),
                 "annotations": {
@@ -262,7 +424,7 @@ fn tool_definitions() -> serde_json::Value {
             {
                 "name": "promptguard_redact",
                 "title": "Redact PII",
-                "description": "Redact PII (emails, phone numbers, SSNs, credit cards, API keys, etc.) from text via the PromptGuard API. Returns sanitized text with entities replaced by placeholders.\nWhen to use: Before including user data in LLM prompts, when processing customer messages, or when building RAG pipelines that ingest documents containing personal information.",
+                "description": "Redact PII (emails, phone numbers, SSNs, credit cards, API keys) from text. Returns sanitized text with each entity replaced by a labeled placeholder, e.g. [EMAIL_REDACTED], [PHONE_REDACTED], [SSN_REDACTED], and the PII types found. Never returns the original text. Each call counts as one Request on your PromptGuard plan.\nWhen to use: Before including user data in LLM prompts, when processing customer messages, or when building RAG pipelines that ingest documents containing personal information.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -271,11 +433,12 @@ fn tool_definitions() -> serde_json::Value {
                             "description": "The text content to redact PII from"
                         }
                     },
-                    "required": ["text"]
+                    "required": ["text"],
+                    "additionalProperties": false
                 },
                 "outputSchema": redact_output_schema(),
                 "annotations": {
-                    "readOnlyHint": false,
+                    "readOnlyHint": true,
                     "destructiveHint": false,
                     "openWorldHint": false
                 }
@@ -283,10 +446,11 @@ fn tool_definitions() -> serde_json::Value {
             {
                 "name": "promptguard_status",
                 "title": "PromptGuard status",
-                "description": "Show current PromptGuard configuration and status for the project. Returns whether PromptGuard is initialized, API key type, proxy URL, configured providers, and CLI version.\nWhen to use: To verify PromptGuard is properly configured, check which providers are active, or confirm the installed CLI version.",
+                "description": "Show whether PromptGuard is set up and signed in, with this server's version and the account or configuration details it knows (the hosted server reports your plan; the local CLI server reports its key type, proxy URL and providers).\nWhen to use: To verify PromptGuard is properly configured, or to confirm which version is running.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {}
+                    "properties": {},
+                    "additionalProperties": false
                 },
                 "outputSchema": status_output_schema(),
                 "annotations": {
@@ -296,9 +460,13 @@ fn tool_definitions() -> serde_json::Value {
                     "openWorldHint": false
                 }
             }
-        ]
-    })
+    ])
 }
+
+/// The `type` values `POST /security/scan` accepts (backend
+/// `developer/security/router.py`, `ScanRequest.type`, pattern
+/// `^(prompt|response)$`), first the default.
+const SCAN_CONTENT_TYPES: [&str; 2] = ["prompt", "response"];
 
 // ---------------------------------------------------------------------------
 // Tool results
@@ -375,9 +543,26 @@ fn handle_scan_text(params: &serde_json::Value) -> serde_json::Value {
         Ok(t) => t,
         Err(e) => return e,
     };
+    // An invalid value is an input validation error, so a tool result the
+    // model can correct, not a protocol error (spec 2025-11-25, server/tools
+    // "Error Handling").
+    let content_type = match params.get("content_type") {
+        None => SCAN_CONTENT_TYPES[0],
+        Some(value) => match SCAN_CONTENT_TYPES
+            .iter()
+            .find(|t| value.as_str() == Some(**t))
+        {
+            Some(t) => t,
+            None => {
+                return tool_error(&format!(
+                    "Error: 'content_type' must be \"prompt\" or \"response\", got {value}"
+                ))
+            },
+        },
+    };
     match post_with_session(
         "/security/scan",
-        serde_json::json!({ "content": text, "type": "prompt" }),
+        serde_json::json!({ "content": text, "type": content_type }),
     ) {
         Ok(response) => tool_ok(&response),
         Err(e) => tool_error(&format!("Error: {e}")),
@@ -525,21 +710,22 @@ fn handle_status(_params: &serde_json::Value) -> serde_json::Value {
     }
 }
 
-fn handle_auth(params: &serde_json::Value) -> serde_json::Value {
-    // This tool used to accept the key as an argument and save it. A tool
-    // argument is model context: the key sat in the conversation, the
-    // client's transcript and any log of tool calls. A client holding the old
-    // schema may still send one, so refuse it without saving it.
-    if params.get("api_key").is_some() {
-        return tool_error(
-            "Refused: this tool no longer accepts an API key, and the key was NOT saved. \
-             An API key pasted into a chat ends up in the conversation history. \
-             Ask the user to run `promptguard login` in a terminal (or set \
-             PROMPTGUARD_API_KEY in this MCP server's configuration), and to revoke \
-             the key they shared if it was a real one.",
-        );
-    }
+/// `promptguard_auth` used to accept the key as an argument and save it. A
+/// tool argument is model context: the key sat in the conversation, the
+/// client's transcript and any log of tool calls. A client holding the old
+/// schema may still send one, so it is refused without being saved, with a
+/// message that says why (rather than the generic unknown-argument one).
+fn pasted_key_refusal() -> serde_json::Value {
+    tool_error(
+        "Refused: this tool no longer accepts an API key, and the key was NOT saved. \
+         An API key pasted into a chat ends up in the conversation history. \
+         Ask the user to run `promptguard login` in a terminal (or set \
+         PROMPTGUARD_API_KEY in this MCP server's configuration), and to revoke \
+         the key they shared if it was a real one.",
+    )
+}
 
+fn handle_auth(_params: &serde_json::Value) -> serde_json::Value {
     if crate::auth::resolve_session().is_ok() {
         return tool_text(
             "PromptGuard is already authenticated. Run `promptguard whoami` in a terminal \
@@ -584,71 +770,159 @@ fn handle_logout(_params: &serde_json::Value) -> serde_json::Value {
 // Request dispatch
 // ---------------------------------------------------------------------------
 
+/// Run a `tools/call`. A protocol error is a malformed request or an unknown
+/// tool; anything the model can fix is a tool result with `isError` (spec
+/// 2025-11-25 and 2026-07-28, server/tools "Error Handling").
+fn call_tool(params: &serde_json::Value) -> std::result::Result<serde_json::Value, ProtocolError> {
+    let tool_name = params
+        .get("name")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let arguments = match params.get("arguments") {
+        None | Some(serde_json::Value::Null) => serde_json::json!({}),
+        Some(a) if a.is_object() => a.clone(),
+        Some(_) => {
+            return Err(ProtocolError::new(
+                INVALID_PARAMS,
+                "'arguments' must be an object".to_string(),
+            ))
+        },
+    };
+    let definitions = tool_definitions();
+    let Some(definition) = definitions
+        .as_array()
+        .and_then(|tools| tools.iter().find(|t| t["name"] == tool_name))
+    else {
+        return Err(ProtocolError::new(
+            INVALID_PARAMS,
+            format!("Unknown tool: {tool_name}"),
+        ));
+    };
+
+    if tool_name == "promptguard_auth" && arguments.get("api_key").is_some() {
+        return Ok(pasted_key_refusal());
+    }
+    // Every input schema says `additionalProperties: false`; hold the
+    // arguments to it, so a misspelt parameter is reported, not ignored.
+    let declared = definition["inputSchema"]["properties"].as_object();
+    let unknown: Vec<&str> = arguments
+        .as_object()
+        .into_iter()
+        .flat_map(|args| args.keys())
+        .filter(|key| !declared.is_some_and(|props| props.contains_key(*key)))
+        .map(String::as_str)
+        .collect();
+    if !unknown.is_empty() {
+        return Ok(tool_error(&format!(
+            "Error: {tool_name} does not take {}",
+            unknown
+                .iter()
+                .map(|k| format!("'{k}'"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
+    }
+
+    Ok(match tool_name {
+        "promptguard_scan_text" => handle_scan_text(&arguments),
+        "promptguard_scan_project" => handle_scan_project(&arguments),
+        "promptguard_redact" => handle_redact(&arguments),
+        "promptguard_status" => handle_status(&arguments),
+        "promptguard_auth" => handle_auth(&arguments),
+        "promptguard_logout" => handle_logout(&arguments),
+        _ => {
+            return Err(ProtocolError::new(
+                INVALID_PARAMS,
+                format!("Unknown tool: {tool_name}"),
+            ))
+        },
+    })
+}
+
+fn method_not_found(method: &str) -> ProtocolError {
+    ProtocolError::new(METHOD_NOT_FOUND, format!("Method not found: {method}"))
+}
+
+/// A handshake-era request: served as 2025-11-25 and earlier define.
+fn handle_legacy(
+    method: &str,
+    params: &serde_json::Value,
+) -> std::result::Result<serde_json::Value, ProtocolError> {
+    match method {
+        "initialize" => Ok(serde_json::json!({
+            "protocolVersion": negotiate_protocol_version(params),
+            "capabilities": server_capabilities(),
+            "serverInfo": server_info(),
+        })),
+        "ping" => Ok(serde_json::json!({})),
+        "tools/list" => Ok(serde_json::json!({ "tools": tool_definitions() })),
+        "tools/call" => call_tool(params),
+        // `server/discover` exists only in the stateless era, whose requests
+        // must name their revision: without one the request is malformed
+        // (spec 2026-07-28, basic "`_meta`").
+        "server/discover" => Err(ProtocolError::new(
+            INVALID_PARAMS,
+            format!(
+                "server/discover needs _meta[\"{META_PROTOCOL_VERSION}\"] set to one of: {}",
+                MODERN_PROTOCOL_VERSIONS.join(", ")
+            ),
+        )),
+        _ => Err(method_not_found(method)),
+    }
+}
+
+/// A stateless-era request (spec 2026-07-28). Every result carries
+/// `resultType` (basic "Result Responses": MUST) and the server's identity
+/// in `_meta` (basic "`_meta`", per-response fields: SHOULD); the two
+/// cacheable results carry `ttlMs` and `cacheScope` (server/utilities/caching:
+/// MUST). `ping` and `logging/setLevel` were removed in this revision
+/// (changelog, major change 5), so they are unknown methods here.
+fn handle_modern(
+    method: &str,
+    params: &serde_json::Value,
+) -> std::result::Result<serde_json::Value, ProtocolError> {
+    let mut result = match method {
+        "server/discover" => serde_json::json!({
+            "supportedVersions": supported_protocol_versions(),
+            "capabilities": server_capabilities(),
+        }),
+        "tools/list" => serde_json::json!({ "tools": tool_definitions() }),
+        "tools/call" => call_tool(params)?,
+        _ => return Err(method_not_found(method)),
+    };
+    if matches!(method, "server/discover" | "tools/list") {
+        // The same for every caller: no user data, so any cache may share it.
+        result["ttlMs"] = serde_json::json!(CACHE_TTL_MS);
+        result["cacheScope"] = serde_json::json!("public");
+    }
+    result["resultType"] = serde_json::json!("complete");
+    result["_meta"] = serde_json::json!({ META_SERVER_INFO: server_info() });
+    Ok(result)
+}
+
 fn handle_request(request: &JsonRpcRequest) -> JsonRpcResponse {
     let id = request.id.clone().unwrap_or(serde_json::Value::Null);
 
-    match request.method.as_str() {
-        "initialize" => JsonRpcResponse::success(
-            id,
-            serde_json::json!({
-                "protocolVersion": negotiate_protocol_version(&request.params),
-                // Tools only. `logging` used to be advertised here with no
-                // `logging/setLevel` behind it, so a client that took the
-                // capability at its word got "method not found".
-                "capabilities": {
-                    "tools": { "listChanged": false }
-                },
-                "serverInfo": {
-                    "name": "promptguard",
-                    "title": "PromptGuard",
-                    "version": env!("CARGO_PKG_VERSION"),
-                }
-            }),
-        ),
-
-        // Notifications (requests without an id) never reach this function:
-        // `execute` drops them before dispatch, as JSON-RPC notifications
-        // expect no response.
-        "ping" => JsonRpcResponse::success(id, serde_json::json!({})),
-
-        "tools/list" => JsonRpcResponse::success(id, tool_definitions()),
-
-        "tools/call" => {
-            let tool_name = request
-                .params
-                .get("name")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or("");
-            let arguments = request
-                .params
-                .get("arguments")
-                .cloned()
-                .unwrap_or_else(|| serde_json::json!({}));
-
-            let result = match tool_name {
-                "promptguard_scan_text" => handle_scan_text(&arguments),
-                "promptguard_scan_project" => handle_scan_project(&arguments),
-                "promptguard_redact" => handle_redact(&arguments),
-                "promptguard_status" => handle_status(&arguments),
-                "promptguard_auth" => handle_auth(&arguments),
-                "promptguard_logout" => handle_logout(&arguments),
-                _ => {
-                    return JsonRpcResponse::error(
-                        id,
-                        INVALID_PARAMS,
-                        format!("Unknown tool: {tool_name}"),
-                    );
-                },
-            };
-
-            JsonRpcResponse::success(id, result)
-        },
-
-        _ => JsonRpcResponse::error(
-            id,
-            METHOD_NOT_FOUND,
-            format!("Method not found: {}", request.method),
-        ),
+    // Notifications (requests without an id) never reach this function:
+    // `execute` drops them before dispatch, as JSON-RPC notifications expect
+    // no response.
+    //
+    // `initialize` always selects handshake semantics: it is how a legacy
+    // client opens, and its own `protocolVersion` picks the revision (spec
+    // 2026-07-28, basic/versioning: "An initialize request selects legacy
+    // semantics").
+    let era = if request.method == "initialize" {
+        Ok(Era::Legacy)
+    } else {
+        request_era(&request.params)
+    };
+    let result = era.and_then(|era| match era {
+        Era::Legacy => handle_legacy(&request.method, &request.params),
+        Era::Modern => handle_modern(&request.method, &request.params),
+    });
+    match result {
+        Ok(result) => JsonRpcResponse::success(id, result),
+        Err(error) => JsonRpcResponse::failure(id, error),
     }
 }
 

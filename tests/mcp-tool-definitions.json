@@ -1,0 +1,166 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Published MCP tool manifest. shared_tools and backend_only_tools are generated from the hosted server (backend/api/chatgpt/tool_manifest.py); cli_only_tools belongs to the CLI, which keeps a byte copy of this file and tests its own tools against it (scripts/utils/check_mcp_tool_manifest.py compares the two). A shared tool has one title, description, input schema and annotations in both servers.",
+  "shared_tools": [
+    {
+      "name": "promptguard_scan_text",
+      "title": "Scan text for threats",
+      "description": "Scan text for security threats including prompt injection, jailbreaks, PII leakage, and toxic content. Returns a decision (allow/block), confidence score, threat type, and reason. Each call counts as one Request on your PromptGuard plan.\nWhen to use: When reviewing user-facing prompts, testing LLM inputs for safety, or verifying that content is free of injection attacks before sending to an LLM.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "description": "The text content to scan for security threats",
+            "type": "string"
+          },
+          "content_type": {
+            "default": "prompt",
+            "description": "Whether the text is a prompt sent to a model or a model's response",
+            "enum": [
+              "prompt",
+              "response"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "promptguard_redact",
+      "title": "Redact PII",
+      "description": "Redact PII (emails, phone numbers, SSNs, credit cards, API keys) from text. Returns sanitized text with each entity replaced by a labeled placeholder, e.g. [EMAIL_REDACTED], [PHONE_REDACTED], [SSN_REDACTED], and the PII types found. Never returns the original text. Each call counts as one Request on your PromptGuard plan.\nWhen to use: Before including user data in LLM prompts, when processing customer messages, or when building RAG pipelines that ingest documents containing personal information.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "description": "The text content to redact PII from",
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "promptguard_status",
+      "title": "PromptGuard status",
+      "description": "Show whether PromptGuard is set up and signed in, with this server's version and the account or configuration details it knows (the hosted server reports your plan; the local CLI server reports its key type, proxy URL and providers).\nWhen to use: To verify PromptGuard is properly configured, or to confirm which version is running.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    }
+  ],
+  "cli_only_tools": [
+    {
+      "name": "promptguard_auth",
+      "title": "Connect PromptGuard",
+      "description": "Check whether PromptGuard is authenticated, and if not, open the PromptGuard dashboard so the user can create an API key. This tool never takes the key itself: the user saves it outside the chat, by running `promptguard login` in a terminal or by setting PROMPTGUARD_API_KEY in this MCP server's configuration. Never ask the user to paste an API key into the conversation.\nWhen to use: When any other promptguard tool reports that the user is not authenticated or not initialized, or when the user asks to log in to PromptGuard.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "reason": "Requires interactive browser access and local filesystem for credential storage"
+    },
+    {
+      "name": "promptguard_logout",
+      "title": "Log out of PromptGuard",
+      "description": "Log out of PromptGuard by removing the project-local configuration (.promptguard.json) and the globally stored API key (~/.promptguard/credentials.json).\nWhen to use: When the user wants to switch PromptGuard accounts, clear credentials, or ensure a clean state by removing existing authentication.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "reason": "Requires local filesystem access to delete credentials"
+    },
+    {
+      "name": "promptguard_scan_project",
+      "title": "Find unprotected LLM calls",
+      "description": "Performs static analysis on a project directory to detect unprotected LLM SDK usage (OpenAI, Anthropic, Cohere, Gemini, Bedrock, etc.). Returns detected providers, file locations (line/column), and instance count.\nWhen to use: During local development to find LLM calls that are not routed through PromptGuard, after generating new code that uses LLM SDKs, or when auditing an existing project for security coverage.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "directory": {
+            "description": "Absolute path to the project directory to scan (defaults to current directory)",
+            "type": "string"
+          },
+          "provider": {
+            "description": "Filter results to a specific provider (e.g. 'openai', 'anthropic')",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "reason": "Requires local filesystem access and Tree-sitter AST parsing"
+    }
+  ],
+  "backend_only_tools": [
+    {
+      "name": "promptguard_scan_code",
+      "title": "Find LLM SDK calls in code",
+      "description": "Analyze code for LLM SDK usage patterns (OpenAI, Anthropic, Cohere, Google Gemini, Bedrock). Detects import statements and client instantiations via pattern matching.\nWhen to use: After generating new code that uses LLM SDKs, when reviewing pull requests, or when auditing a codebase for security coverage gaps.",
+      "inputSchema": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "The code content to analyze for LLM SDK usage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
+      "annotations": {
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": false
+      },
+      "reason": "Operates on code strings (no filesystem). Backend handles this for hosted clients like ChatGPT."
+    }
+  ]
+}
