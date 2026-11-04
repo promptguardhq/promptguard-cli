@@ -13,6 +13,8 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-11-05
+
 ### Added
 
 - **`promptguard mcp` speaks MCP 2026-07-28 and 2025-11-25.** A 2026-07-28
