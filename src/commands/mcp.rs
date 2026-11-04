@@ -39,6 +39,13 @@ struct JsonRpcError {
     message: String,
 }
 
+/// JSON-RPC "invalid params": what MCP answers for a `tools/call` naming a
+/// tool the server does not have. An argument the model got wrong is a tool
+/// result with `isError` instead, so the model can read it and retry.
+const INVALID_PARAMS: i64 = -32602;
+const METHOD_NOT_FOUND: i64 = -32601;
+const PARSE_ERROR: i64 = -32700;
+
 impl JsonRpcResponse {
     fn success(id: serde_json::Value, result: serde_json::Value) -> Self {
         Self {
@@ -60,35 +67,155 @@ impl JsonRpcResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Protocol version negotiation
+// ---------------------------------------------------------------------------
+
+/// MCP revisions this server speaks, newest first. `initialize` answers with
+/// the client's requested revision when it is one of these, and with the
+/// newest otherwise, as the lifecycle spec asks; the client then decides
+/// whether it can continue. Nothing here depends on a feature newer than the
+/// first entry: `structuredContent` and `outputSchema` arrived in 2025-06-18,
+/// and an older client ignores fields it does not know.
+const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["2025-06-18", "2025-03-26", "2024-11-05"];
+
+fn negotiate_protocol_version(params: &serde_json::Value) -> &'static str {
+    let requested = params
+        .get("protocolVersion")
+        .and_then(serde_json::Value::as_str);
+    SUPPORTED_PROTOCOL_VERSIONS
+        .iter()
+        .copied()
+        .find(|v| Some(*v) == requested)
+        .unwrap_or(SUPPORTED_PROTOCOL_VERSIONS[0])
+}
+
+// ---------------------------------------------------------------------------
 // MCP tool definitions
 // ---------------------------------------------------------------------------
 
+/// Where `promptguard_auth` sends the user for a key.
+const API_KEYS_URL: &str = "https://app.promptguard.co/settings/api-keys";
+
+fn scan_output_schema() -> serde_json::Value {
+    // The `/security/scan` response (backend `developer/security/router.py`,
+    // `ScanResponse`). Only the fields every server version sends are
+    // required; newer fields are allowed through.
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "blocked": {"type": "boolean"},
+            "decision": {"type": "string"},
+            "confidence": {"type": "number"},
+            "reason": {"type": "string"},
+            "threatType": {"type": ["string", "null"]},
+            "flagged": {"type": "boolean"},
+            "eventId": {"type": ["string", "null"]},
+            "processingTimeMs": {"type": ["number", "null"]}
+        },
+        "required": ["blocked", "decision", "confidence", "reason"]
+    })
+}
+
+fn redact_output_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "redacted": {"type": "string"},
+            "piiFound": {"type": "array", "items": {"type": "string"}}
+        },
+        "required": ["redacted", "piiFound"]
+    })
+}
+
+fn scan_project_output_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string"},
+            "files_scanned": {"type": "integer"},
+            "providers": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "provider": {"type": "string"},
+                        "count": {"type": "integer"},
+                        "instances": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {"type": "string"},
+                                    "line": {"type": "integer"},
+                                    "column": {"type": "integer"},
+                                    "has_base_url": {"type": "boolean"}
+                                },
+                                "required": ["file", "line", "column", "has_base_url"]
+                            }
+                        }
+                    },
+                    "required": ["provider", "count", "instances"]
+                }
+            }
+        },
+        "required": ["summary", "files_scanned", "providers"]
+    })
+}
+
+fn status_output_schema() -> serde_json::Value {
+    serde_json::json!({
+        "type": "object",
+        "properties": {
+            "initialized": {"type": "boolean"},
+            "api_key_type": {"type": "string"},
+            "proxy_url": {"type": "string"},
+            "providers": {"type": "array", "items": {"type": "string"}},
+            "version": {"type": "string"},
+            "message": {"type": "string"}
+        },
+        "required": ["initialized", "version"]
+    })
+}
+
 fn tool_definitions() -> serde_json::Value {
+    // Annotations match the hosted server's (`chatgpt/mcp_server.py` in the
+    // platform repo) for the tools both serve. `scan_text` and `redact` are
+    // not read-only because each call is a metered Request on the account.
     serde_json::json!({
         "tools": [
             {
                 "name": "promptguard_auth",
-                "description": "Authenticate with PromptGuard. When called without an api_key, opens the PromptGuard dashboard in the browser so the user can copy their API key -- then ask the user to provide it. When called with an api_key, validates and saves it.\nWhen to use: When any other promptguard tool reports that the user is not authenticated or not initialized, or when the user asks to log in to PromptGuard.",
+                "title": "Connect PromptGuard",
+                "description": "Check whether PromptGuard is authenticated, and if not, open the PromptGuard dashboard so the user can create an API key. This tool never takes the key itself: the user saves it outside the chat, by running `promptguard login` in a terminal or by setting PROMPTGUARD_API_KEY in this MCP server's configuration. Never ask the user to paste an API key into the conversation.\nWhen to use: When any other promptguard tool reports that the user is not authenticated or not initialized, or when the user asks to log in to PromptGuard.",
                 "inputSchema": {
                     "type": "object",
-                    "properties": {
-                        "api_key": {
-                            "type": "string",
-                            "description": "PromptGuard API key (starts with pg_live_). If omitted, opens the dashboard in the browser for the user to copy their key."
-                        }
-                    }
+                    "properties": {}
+                },
+                "annotations": {
+                    "readOnlyHint": true,
+                    "destructiveHint": false,
+                    "idempotentHint": true,
+                    "openWorldHint": false
                 }
             },
             {
                 "name": "promptguard_logout",
+                "title": "Log out of PromptGuard",
                 "description": "Log out of PromptGuard by removing the project-local configuration (.promptguard.json) and the globally stored API key (~/.promptguard/credentials.json).\nWhen to use: When the user wants to switch PromptGuard accounts, clear credentials, or ensure a clean state by removing existing authentication.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {}
+                },
+                "annotations": {
+                    "readOnlyHint": false,
+                    "destructiveHint": true,
+                    "idempotentHint": true,
+                    "openWorldHint": false
                 }
             },
             {
                 "name": "promptguard_scan_text",
+                "title": "Scan text for threats",
                 "description": "Scan text for security threats (prompt injection, jailbreaks, PII leakage, toxic content) via the PromptGuard API. Returns a decision (allow/block), confidence score, threat type, and reason.\nWhen to use: When reviewing user-facing prompts, testing LLM inputs for safety, or verifying that content is free of injection attacks before sending to an LLM.",
                 "inputSchema": {
                     "type": "object",
@@ -99,10 +226,17 @@ fn tool_definitions() -> serde_json::Value {
                         }
                     },
                     "required": ["text"]
+                },
+                "outputSchema": scan_output_schema(),
+                "annotations": {
+                    "readOnlyHint": false,
+                    "destructiveHint": false,
+                    "openWorldHint": false
                 }
             },
             {
                 "name": "promptguard_scan_project",
+                "title": "Find unprotected LLM calls",
                 "description": "Performs static analysis on a project directory to detect unprotected LLM SDK usage (OpenAI, Anthropic, Cohere, Gemini, Bedrock, etc.). Returns detected providers, file locations (line/column), and instance count.\nWhen to use: During local development to find LLM calls that are not routed through PromptGuard, after generating new code that uses LLM SDKs, or when auditing an existing project for security coverage.",
                 "inputSchema": {
                     "type": "object",
@@ -116,10 +250,18 @@ fn tool_definitions() -> serde_json::Value {
                             "description": "Filter results to a specific provider (e.g. 'openai', 'anthropic')"
                         }
                     }
+                },
+                "outputSchema": scan_project_output_schema(),
+                "annotations": {
+                    "readOnlyHint": true,
+                    "destructiveHint": false,
+                    "idempotentHint": true,
+                    "openWorldHint": false
                 }
             },
             {
                 "name": "promptguard_redact",
+                "title": "Redact PII",
                 "description": "Redact PII (emails, phone numbers, SSNs, credit cards, API keys, etc.) from text via the PromptGuard API. Returns sanitized text with entities replaced by placeholders.\nWhen to use: Before including user data in LLM prompts, when processing customer messages, or when building RAG pipelines that ingest documents containing personal information.",
                 "inputSchema": {
                     "type": "object",
@@ -130,17 +272,60 @@ fn tool_definitions() -> serde_json::Value {
                         }
                     },
                     "required": ["text"]
+                },
+                "outputSchema": redact_output_schema(),
+                "annotations": {
+                    "readOnlyHint": false,
+                    "destructiveHint": false,
+                    "openWorldHint": false
                 }
             },
             {
                 "name": "promptguard_status",
+                "title": "PromptGuard status",
                 "description": "Show current PromptGuard configuration and status for the project. Returns whether PromptGuard is initialized, API key type, proxy URL, configured providers, and CLI version.\nWhen to use: To verify PromptGuard is properly configured, check which providers are active, or confirm the installed CLI version.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {}
+                },
+                "outputSchema": status_output_schema(),
+                "annotations": {
+                    "readOnlyHint": true,
+                    "destructiveHint": false,
+                    "idempotentHint": true,
+                    "openWorldHint": false
                 }
             }
         ]
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Tool results
+// ---------------------------------------------------------------------------
+
+/// A successful tool result: the structured value for clients that read
+/// `structuredContent`, and the same value as JSON text for those that only
+/// read `content` (the spec asks for both).
+fn tool_ok(value: &serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "content": [{"type": "text", "text": serde_json::to_string_pretty(value).unwrap_or_default()}],
+        "structuredContent": value
+    })
+}
+
+/// A plain-text successful result, for tools with no output schema.
+fn tool_text(text: &str) -> serde_json::Value {
+    serde_json::json!({
+        "content": [{"type": "text", "text": text}]
+    })
+}
+
+/// A tool-execution error the model can read and act on.
+fn tool_error(message: &str) -> serde_json::Value {
+    serde_json::json!({
+        "content": [{"type": "text", "text": message}],
+        "isError": true
     })
 }
 
@@ -160,45 +345,42 @@ fn resolve_project_id(config: Option<&crate::config::PromptGuardConfig>) -> Opti
     None
 }
 
+/// POST `body` (plus the resolved `project_id`) to `path` with the session's
+/// credentials.
+fn post_with_session(path: &str, mut body: serde_json::Value) -> Result<serde_json::Value> {
+    // Project config is OPTIONAL here: it only contributes a project_id.
+    // Requiring it meant the tool failed with "not initialized" even though
+    // global credentials were perfectly sufficient.
+    let config = ConfigManager::new(None).ok().and_then(|cm| cm.load().ok());
+    // Resolve via the shared precedence (env > project > global) and the
+    // key-exfiltration guard rather than reading project config directly.
+    let (api_key, base_url) = crate::auth::resolve_session()?;
+    let client = PromptGuardClient::new(api_key, Some(base_url))?;
+    if let Some(pid) = resolve_project_id(config.as_ref()) {
+        body["project_id"] = serde_json::Value::String(pid);
+    }
+    client.post(path, &body)
+}
+
+fn required_text(params: &serde_json::Value) -> std::result::Result<String, serde_json::Value> {
+    params
+        .get("text")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| tool_error("Error: 'text' parameter is required"))
+}
+
 fn handle_scan_text(params: &serde_json::Value) -> serde_json::Value {
-    let text = match params.get("text").and_then(serde_json::Value::as_str) {
-        Some(t) => t.to_string(),
-        None => {
-            return serde_json::json!({
-                "content": [{"type": "text", "text": "Error: 'text' parameter is required"}],
-                "isError": true
-            });
-        },
+    let text = match required_text(params) {
+        Ok(t) => t,
+        Err(e) => return e,
     };
-
-    let result = (|| -> Result<serde_json::Value> {
-        // Project config is OPTIONAL here: it only contributes a project_id.
-        // Requiring it meant scan_text failed with "not initialized" even
-        // though global credentials were perfectly sufficient.
-        let config = ConfigManager::new(None).ok().and_then(|cm| cm.load().ok());
-        // Resolve via the shared precedence (env > project > global) and the
-        // key-exfiltration guard rather than reading project config directly.
-        let (api_key, base_url) = crate::auth::resolve_session()?;
-        let client = PromptGuardClient::new(api_key, Some(base_url))?;
-
-        let mut body = serde_json::json!({ "content": text, "type": "prompt" });
-        if let Some(pid) = resolve_project_id(config.as_ref()) {
-            body["project_id"] = serde_json::Value::String(pid);
-        }
-
-        let response: serde_json::Value = client.post("/security/scan", &body)?;
-
-        Ok(response)
-    })();
-
-    match result {
-        Ok(response) => serde_json::json!({
-            "content": [{"type": "text", "text": serde_json::to_string_pretty(&response).unwrap_or_default()}]
-        }),
-        Err(e) => serde_json::json!({
-            "content": [{"type": "text", "text": format!("Error: {e}")}],
-            "isError": true
-        }),
+    match post_with_session(
+        "/security/scan",
+        serde_json::json!({ "content": text, "type": "prompt" }),
+    ) {
+        Ok(response) => tool_ok(&response),
+        Err(e) => tool_error(&format!("Error: {e}")),
     }
 }
 
@@ -215,21 +397,11 @@ fn handle_scan_project(params: &serde_json::Value) -> serde_json::Value {
     let root_path = PathBuf::from(dir);
     let scanner = match FileScanner::new(&root_path, None) {
         Ok(s) => s,
-        Err(e) => {
-            return serde_json::json!({
-                "content": [{"type": "text", "text": format!("Error creating scanner: {e}")}],
-                "isError": true
-            });
-        },
+        Err(e) => return tool_error(&format!("Error creating scanner: {e}")),
     };
     let files = match scanner.scan_files(None) {
         Ok(f) => f,
-        Err(e) => {
-            return serde_json::json!({
-                "content": [{"type": "text", "text": format!("Error scanning files: {e}")}],
-                "isError": true
-            });
-        },
+        Err(e) => return tool_error(&format!("Error scanning files: {e}")),
     };
 
     let mut all_detections: HashMap<Provider, Vec<DetectionInstance>> = HashMap::new();
@@ -287,57 +459,35 @@ fn handle_scan_project(params: &serde_json::Value) -> serde_json::Value {
         )
     };
 
-    serde_json::json!({
-        "content": [{
-            "type": "text",
-            "text": serde_json::to_string_pretty(&serde_json::json!({
-                "summary": summary,
-                "files_scanned": files.len(),
-                "providers": results,
-            })).unwrap_or_default()
-        }]
-    })
+    tool_ok(&serde_json::json!({
+        "summary": summary,
+        "files_scanned": files.len(),
+        "providers": results,
+    }))
 }
 
 fn handle_redact(params: &serde_json::Value) -> serde_json::Value {
-    let text = match params.get("text").and_then(serde_json::Value::as_str) {
-        Some(t) => t.to_string(),
-        None => {
-            return serde_json::json!({
-                "content": [{"type": "text", "text": "Error: 'text' parameter is required"}],
-                "isError": true
-            });
-        },
+    let text = match required_text(params) {
+        Ok(t) => t,
+        Err(e) => return e,
     };
-
-    let result = (|| -> Result<serde_json::Value> {
-        // Project config is OPTIONAL here: it only contributes a project_id.
-        // Requiring it meant redact failed with "not initialized" even
-        // though global credentials were perfectly sufficient.
-        let config = ConfigManager::new(None).ok().and_then(|cm| cm.load().ok());
-        // Resolve via the shared precedence (env > project > global) and the
-        // key-exfiltration guard rather than reading project config directly.
-        let (api_key, base_url) = crate::auth::resolve_session()?;
-        let client = PromptGuardClient::new(api_key, Some(base_url))?;
-
-        let mut body = serde_json::json!({ "content": text });
-        if let Some(pid) = resolve_project_id(config.as_ref()) {
-            body["project_id"] = serde_json::Value::String(pid);
-        }
-
-        let response: serde_json::Value = client.post("/security/redact", &body)?;
-
-        Ok(response)
-    })();
-
-    match result {
-        Ok(response) => serde_json::json!({
-            "content": [{"type": "text", "text": serde_json::to_string_pretty(&response).unwrap_or_default()}]
-        }),
-        Err(e) => serde_json::json!({
-            "content": [{"type": "text", "text": format!("Error: {e}")}],
-            "isError": true
-        }),
+    match post_with_session("/security/redact", serde_json::json!({ "content": text })) {
+        // The API echoes the un-redacted input back as `original`. A tool
+        // result goes into the model's context and the client's transcript,
+        // so returning it would re-introduce the very PII this tool removes.
+        // The hosted server drops it for the same reason.
+        Ok(response) => match response.get("redacted").and_then(serde_json::Value::as_str) {
+            Some(redacted) => tool_ok(&serde_json::json!({
+                "redacted": redacted,
+                "piiFound": response
+                    .get("piiFound")
+                    .filter(|v| v.is_array())
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!([])),
+            })),
+            None => tool_error("Error: the PromptGuard API returned no redacted text"),
+        },
+        Err(e) => tool_error(&format!("Error: {e}")),
     }
 }
 
@@ -366,85 +516,50 @@ fn handle_status(_params: &serde_json::Value) -> serde_json::Value {
     })();
 
     match result {
-        Ok(info) => serde_json::json!({
-            "content": [{"type": "text", "text": serde_json::to_string_pretty(&info).unwrap_or_default()}]
-        }),
-        Err(_) => serde_json::json!({
-            "content": [{"type": "text", "text": serde_json::to_string_pretty(&serde_json::json!({
-                "initialized": false,
-                "message": "PromptGuard is not configured. Run 'promptguard init' first.",
-                "version": env!("CARGO_PKG_VERSION"),
-            })).unwrap_or_default()}]
-        }),
+        Ok(info) => tool_ok(&info),
+        Err(_) => tool_ok(&serde_json::json!({
+            "initialized": false,
+            "message": "PromptGuard is not configured. Run 'promptguard init' first.",
+            "version": env!("CARGO_PKG_VERSION"),
+        })),
     }
 }
 
 fn handle_auth(params: &serde_json::Value) -> serde_json::Value {
-    let api_key = params.get("api_key").and_then(serde_json::Value::as_str);
-
-    match api_key {
-        None => {
-            // No key provided -- open dashboard so user can grab one
-            let url = "https://app.promptguard.co/settings/api-keys";
-            let _ = open::that(url);
-
-            serde_json::json!({
-                "content": [{
-                    "type": "text",
-                    "text": "Opened the PromptGuard dashboard in your browser. Please copy your API key (starts with pg_live_) and provide it here so I can save it."
-                }]
-            })
-        },
-        Some(key) => {
-            if !crate::config::is_valid_api_key(key) {
-                return serde_json::json!({
-                    "content": [{"type": "text", "text": "Invalid API key format. Keys must start with 'pg_live_'."}],
-                    "isError": true
-                });
-            }
-
-            // Validate against an authenticated endpoint before saving —
-            // don't claim "Authenticated successfully" for an unverified key.
-            let validation = PromptGuardClient::new(key.to_string(), None)
-                .and_then(|client| client.validate_credentials());
-            if let Err(e) = validation {
-                return serde_json::json!({
-                    "content": [{"type": "text", "text": format!("API key validation failed: {e}. The key was NOT saved.")}],
-                    "isError": true
-                });
-            }
-
-            let result = (|| -> Result<()> {
-                let config_manager = ConfigManager::new(None)?;
-
-                if config_manager.exists() {
-                    let mut config = config_manager.load()?;
-                    config.api_key = key.to_string();
-                    config_manager.save(&config)?;
-                } else {
-                    let config = crate::config::PromptGuardConfig::new(
-                        key.to_string(),
-                        "https://api.promptguard.co/api/v1".to_string(),
-                        Vec::new(),
-                    )?;
-                    config_manager.save(&config)?;
-                }
-                Ok(())
-            })();
-
-            match result {
-                Ok(()) => {
-                    serde_json::json!({
-                        "content": [{"type": "text", "text": "Authenticated successfully. PromptGuard is ready to use.\n\nTo associate requests with a specific project, set \"project_id\" in .promptguard.json or run 'promptguard projects select <id>'.".to_string()}]
-                    })
-                },
-                Err(e) => serde_json::json!({
-                    "content": [{"type": "text", "text": format!("Failed to save API key: {e}")}],
-                    "isError": true
-                }),
-            }
-        },
+    // This tool used to accept the key as an argument and save it. A tool
+    // argument is model context: the key sat in the conversation, the
+    // client's transcript and any log of tool calls. A client holding the old
+    // schema may still send one, so refuse it without saving it.
+    if params.get("api_key").is_some() {
+        return tool_error(
+            "Refused: this tool no longer accepts an API key, and the key was NOT saved. \
+             An API key pasted into a chat ends up in the conversation history. \
+             Ask the user to run `promptguard login` in a terminal (or set \
+             PROMPTGUARD_API_KEY in this MCP server's configuration), and to revoke \
+             the key they shared if it was a real one.",
+        );
     }
+
+    if crate::auth::resolve_session().is_ok() {
+        return tool_text(
+            "PromptGuard is already authenticated. Run `promptguard whoami` in a terminal \
+             to see which account, or `promptguard login` to switch keys.",
+        );
+    }
+
+    let opened = open::that(API_KEYS_URL).is_ok();
+    let lead = if opened {
+        format!("Opened {API_KEYS_URL} in the browser.")
+    } else {
+        format!("Open {API_KEYS_URL} in a browser.")
+    };
+    tool_text(&format!(
+        "{lead} PromptGuard is not authenticated yet. Ask the user to copy an API key \
+         from that page and save it OUTSIDE this chat, either by running \
+         `promptguard login` in a terminal or by setting PROMPTGUARD_API_KEY in this \
+         MCP server's configuration. Do not ask them to paste the key here. Call \
+         this tool again afterwards to confirm."
+    ))
 }
 
 fn handle_logout(_params: &serde_json::Value) -> serde_json::Value {
@@ -458,13 +573,10 @@ fn handle_logout(_params: &serde_json::Value) -> serde_json::Value {
     })();
 
     match result {
-        Ok(()) => serde_json::json!({
-            "content": [{"type": "text", "text": "Logged out. Removed the project-local PromptGuard configuration (.promptguard.json) and the globally stored API key (~/.promptguard/credentials.json)."}]
-        }),
-        Err(e) => serde_json::json!({
-            "content": [{"type": "text", "text": format!("Logout failed: {e}")}],
-            "isError": true
-        }),
+        Ok(()) => tool_text(
+            "Logged out. Removed the project-local PromptGuard configuration (.promptguard.json) and the globally stored API key (~/.promptguard/credentials.json).",
+        ),
+        Err(e) => tool_error(&format!("Logout failed: {e}")),
     }
 }
 
@@ -479,13 +591,16 @@ fn handle_request(request: &JsonRpcRequest) -> JsonRpcResponse {
         "initialize" => JsonRpcResponse::success(
             id,
             serde_json::json!({
-                "protocolVersion": "2025-03-26",
+                "protocolVersion": negotiate_protocol_version(&request.params),
+                // Tools only. `logging` used to be advertised here with no
+                // `logging/setLevel` behind it, so a client that took the
+                // capability at its word got "method not found".
                 "capabilities": {
-                    "tools": { "listChanged": false },
-                    "logging": {}
+                    "tools": { "listChanged": false }
                 },
                 "serverInfo": {
                     "name": "promptguard",
+                    "title": "PromptGuard",
                     "version": env!("CARGO_PKG_VERSION"),
                 }
             }),
@@ -517,16 +632,23 @@ fn handle_request(request: &JsonRpcRequest) -> JsonRpcResponse {
                 "promptguard_status" => handle_status(&arguments),
                 "promptguard_auth" => handle_auth(&arguments),
                 "promptguard_logout" => handle_logout(&arguments),
-                _ => serde_json::json!({
-                    "content": [{"type": "text", "text": format!("Unknown tool: {tool_name}")}],
-                    "isError": true
-                }),
+                _ => {
+                    return JsonRpcResponse::error(
+                        id,
+                        INVALID_PARAMS,
+                        format!("Unknown tool: {tool_name}"),
+                    );
+                },
             };
 
             JsonRpcResponse::success(id, result)
         },
 
-        _ => JsonRpcResponse::error(id, -32601, format!("Method not found: {}", request.method)),
+        _ => JsonRpcResponse::error(
+            id,
+            METHOD_NOT_FOUND,
+            format!("Method not found: {}", request.method),
+        ),
     }
 }
 
@@ -562,7 +684,7 @@ impl McpCommand {
                 Err(e) => {
                     let err_response = JsonRpcResponse::error(
                         serde_json::Value::Null,
-                        -32700,
+                        PARSE_ERROR,
                         format!("Parse error: {e}"),
                     );
                     let out = serde_json::to_string(&err_response).unwrap_or_default();

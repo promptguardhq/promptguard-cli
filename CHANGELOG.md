@@ -13,6 +13,30 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+### Security
+
+- **`promptguard mcp` no longer takes an API key through the chat.**
+  `promptguard_auth` used to accept the key as a tool argument, which put it in
+  the model's context, the client's transcript and any log of tool calls. The
+  tool now only checks authentication and, when there is none, opens the
+  dashboard and tells the user to save the key with `promptguard login` or
+  `PROMPTGUARD_API_KEY`. A client still sending `api_key` is refused, and
+  nothing is saved.
+- **`promptguard_redact` no longer returns the un-redacted text.** It passed the
+  API's response through whole, including the `original` field, so the PII it
+  removed came straight back into the conversation. It now returns `redacted`
+  and `piiFound` only, as the hosted server does.
+
+### Changed
+
+- **The MCP server follows the current spec.** `initialize` negotiates the
+  protocol version (2025-06-18, 2025-03-26 or 2024-11-05) instead of always
+  answering 2025-03-26. It no longer advertises a `logging` capability it never
+  implemented. Every tool has a `title` and behaviour annotations, and the scan,
+  redact, scan-project and status tools declare an `outputSchema` and return
+  `structuredContent`. Calling a tool that does not exist is now a JSON-RPC
+  `-32602` error rather than a tool result.
+
 ## [2.2.4] - 2026-11-03
 
 ### Added
