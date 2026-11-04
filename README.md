@@ -141,12 +141,18 @@ maintained, so do not install it.
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `promptguard_auth` | `api_key` (optional) | Save/validate API key |
+| `promptguard_auth` | — | Check authentication; if missing, open the dashboard to get a key. Save it with `promptguard login`, never in the chat |
 | `promptguard_logout` | — | Clear local credentials |
 | `promptguard_scan_text` | `text` (required) | Scan text for security threats |
 | `promptguard_scan_project` | `directory`, `provider` (optional) | Scan codebase for unprotected LLM SDK usage |
-| `promptguard_redact` | `text` (required) | Redact PII from text |
+| `promptguard_redact` | `text` (required) | Redact PII from text (returns the redacted text only) |
 | `promptguard_status` | — | Check config and API connectivity |
+
+The server speaks MCP revisions 2025-06-18, 2025-03-26 and 2024-11-05, and
+answers `initialize` with the one the client asks for. Each tool carries
+behaviour annotations (`promptguard_logout` is the one destructive tool), and
+the scan, redact and status tools return `structuredContent` that matches their
+declared `outputSchema`.
 
 ### Client Configuration
 
