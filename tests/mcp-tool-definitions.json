@@ -60,7 +60,7 @@
     {
       "name": "promptguard_status",
       "title": "PromptGuard status",
-      "description": "Show current PromptGuard configuration and status. Returns authentication state, plan or key type, and version.\nWhen to use: To verify PromptGuard is properly configured, check which plan is active, or confirm the installed version.",
+      "description": "Show whether PromptGuard is set up and signed in, with this server's version and the account or configuration details it knows (the hosted server reports your plan; the local CLI server reports its key type, proxy URL and providers).\nWhen to use: To verify PromptGuard is properly configured, or to confirm which version is running.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {},
