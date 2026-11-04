@@ -60,7 +60,8 @@ fn fake_api() -> String {
                     "blocked": content.contains("ignore previous"),
                     "decision": if content.contains("ignore previous") { "block" } else { "allow" },
                     "confidence": 0.97,
-                    "reason": "test verdict",
+                    // Echo the scan type, so a test can see what was sent.
+                    "reason": format!("test verdict for {}", body["type"].as_str().unwrap_or("<none>")),
                     "threatType": null,
                     "flagged": false,
                     "eventId": "evt_test",
@@ -227,7 +228,7 @@ fn initialize(home: &Path, version: Option<&str>) -> Value {
 #[test]
 fn initialize_answers_with_the_version_the_client_asked_for_when_supported() {
     let home = TempDir::new().unwrap();
-    for version in ["2025-06-18", "2025-03-26", "2024-11-05"] {
+    for version in ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"] {
         assert_eq!(
             initialize(home.path(), Some(version))["protocolVersion"],
             version
@@ -240,11 +241,198 @@ fn initialize_answers_with_its_newest_version_for_one_it_does_not_know() {
     let home = TempDir::new().unwrap();
     assert_eq!(
         initialize(home.path(), Some("2099-01-01"))["protocolVersion"],
-        "2025-06-18"
+        "2025-11-25"
     );
     assert_eq!(
         initialize(home.path(), None)["protocolVersion"],
-        "2025-06-18"
+        "2025-11-25"
+    );
+}
+
+#[test]
+fn initialize_never_agrees_on_a_stateless_revision() {
+    // 2026-07-28 has no handshake: a client that sends `initialize` is a
+    // legacy client and gets the newest handshake revision.
+    let home = TempDir::new().unwrap();
+    assert_eq!(
+        initialize(home.path(), Some("2026-07-28"))["protocolVersion"],
+        "2025-11-25"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Stateless revision (2026-07-28): no handshake, version on every request
+// ---------------------------------------------------------------------------
+
+const SUPPORTED: [&str; 5] = [
+    "2026-07-28",
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05",
+];
+
+/// The per-request fields 2026-07-28 requires in `_meta`.
+fn modern_meta(version: &str) -> Value {
+    json!({
+        "io.modelcontextprotocol/protocolVersion": version,
+        "io.modelcontextprotocol/clientCapabilities": {},
+        "io.modelcontextprotocol/clientInfo": {"name": "test", "version": "0"}
+    })
+}
+
+fn modern(id: u64, method: &str, mut params: Value, version: &str) -> Value {
+    params["_meta"] = modern_meta(version);
+    json!({"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+}
+
+fn assert_modern_result(result: &Value) {
+    assert_eq!(result["resultType"], "complete", "{result}");
+    assert_eq!(
+        result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "promptguard",
+        "{result}"
+    );
+}
+
+#[test]
+fn server_discover_lists_every_revision_capabilities_and_identity() {
+    let home = TempDir::new().unwrap();
+    let response = &session(
+        home.path(),
+        &[],
+        &[modern(1, "server/discover", json!({}), "2026-07-28")],
+    )[0];
+    let result = &response["result"];
+    assert_modern_result(result);
+    assert_eq!(result["supportedVersions"], json!(SUPPORTED));
+    assert_eq!(
+        result["capabilities"],
+        json!({"tools": {"listChanged": false}})
+    );
+    assert!(result["ttlMs"].as_u64().is_some(), "{result}");
+    assert_eq!(result["cacheScope"], "public");
+}
+
+#[test]
+fn a_request_naming_its_revision_needs_no_initialize() {
+    let home = TempDir::new().unwrap();
+    let responses = session(
+        home.path(),
+        &[],
+        &[
+            modern(1, "tools/list", json!({}), "2026-07-28"),
+            modern(
+                2,
+                "tools/call",
+                json!({"name": "promptguard_status", "arguments": {}}),
+                "2026-07-28",
+            ),
+        ],
+    );
+    let list = &responses[0]["result"];
+    assert_modern_result(list);
+    assert!(list["ttlMs"].as_u64().is_some(), "{list}");
+    assert_eq!(list["cacheScope"], "public");
+    // The same tools in both eras.
+    assert_eq!(list["tools"], json!(tools(home.path())));
+
+    let call = &responses[1]["result"];
+    assert_modern_result(call);
+    assert_eq!(call["structuredContent"]["initialized"], false, "{call}");
+}
+
+#[test]
+fn an_unsupported_revision_is_refused_with_the_supported_list() {
+    let home = TempDir::new().unwrap();
+    let response = &session(
+        home.path(),
+        &[],
+        &[modern(7, "tools/list", json!({}), "1900-01-01")],
+    )[0];
+    assert!(response.get("result").is_none(), "{response}");
+    assert_eq!(response["id"], 7);
+    assert_eq!(response["error"]["code"], -32022);
+    assert_eq!(response["error"]["data"]["supported"], json!(SUPPORTED));
+    assert_eq!(response["error"]["data"]["requested"], "1900-01-01");
+}
+
+#[test]
+fn a_stateless_request_without_client_capabilities_is_malformed() {
+    let home = TempDir::new().unwrap();
+    let request = json!({
+        "jsonrpc": "2.0", "id": 1, "method": "tools/list",
+        "params": {"_meta": {"io.modelcontextprotocol/protocolVersion": "2026-07-28"}}
+    });
+    let response = &session(home.path(), &[], &[request])[0];
+    assert_eq!(response["error"]["code"], -32602, "{response}");
+}
+
+#[test]
+fn server_discover_without_a_revision_is_malformed() {
+    let home = TempDir::new().unwrap();
+    let response = &session(
+        home.path(),
+        &[],
+        &[json!({"jsonrpc": "2.0", "id": 1, "method": "server/discover"})],
+    )[0];
+    assert_eq!(response["error"]["code"], -32602, "{response}");
+}
+
+#[test]
+fn ping_and_set_level_are_gone_in_the_stateless_revision_only() {
+    let home = TempDir::new().unwrap();
+    let responses = session(
+        home.path(),
+        &[],
+        &[
+            modern(1, "ping", json!({}), "2026-07-28"),
+            modern(
+                2,
+                "logging/setLevel",
+                json!({"level": "info"}),
+                "2026-07-28",
+            ),
+            json!({"jsonrpc": "2.0", "id": 3, "method": "ping"}),
+        ],
+    );
+    assert_eq!(responses[0]["error"]["code"], -32601);
+    assert_eq!(responses[1]["error"]["code"], -32601);
+    assert_eq!(responses[2]["result"], json!({}));
+}
+
+#[test]
+fn a_handshake_revision_in_meta_is_served_as_before() {
+    let home = TempDir::new().unwrap();
+    let response = &session(
+        home.path(),
+        &[],
+        &[modern(1, "tools/list", json!({}), "2025-11-25")],
+    )[0];
+    let result = &response["result"];
+    assert!(result.get("resultType").is_none(), "{result}");
+    assert_eq!(result["tools"], json!(tools(home.path())));
+}
+
+#[test]
+fn a_legacy_session_still_negotiates_and_runs_tools() {
+    let home = TempDir::new().unwrap();
+    let responses = session(
+        home.path(),
+        &[],
+        &[
+            json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                "protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0"}}}),
+            json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+            call(2, "promptguard_status", json!({})),
+        ],
+    );
+    assert_eq!(responses.len(), 2, "the notification got a response");
+    assert_eq!(responses[0]["result"]["protocolVersion"], "2025-06-18");
+    assert!(responses[1]["result"].get("resultType").is_none());
+    assert_eq!(
+        responses[1]["result"]["structuredContent"]["initialized"],
+        false
     );
 }
 
@@ -253,6 +441,31 @@ fn initialize_advertises_only_capabilities_it_implements() {
     let home = TempDir::new().unwrap();
     let capabilities = initialize(home.path(), Some("2025-06-18"))["capabilities"].clone();
     assert_eq!(capabilities, json!({"tools": {"listChanged": false}}));
+}
+
+#[test]
+fn an_unknown_argument_is_a_tool_error_the_model_can_fix() {
+    let home = TempDir::new().unwrap();
+    let response = &session(
+        home.path(),
+        &[],
+        &[call(1, "promptguard_status", json!({"verbose": true}))],
+    )[0];
+    let result = &response["result"];
+    assert_eq!(result["isError"], json!(true), "{response}");
+    assert!(result["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .contains("'verbose'"));
+}
+
+#[test]
+fn arguments_that_are_not_an_object_are_a_protocol_error() {
+    let home = TempDir::new().unwrap();
+    let request = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+        "params": {"name": "promptguard_status", "arguments": "nope"}});
+    let response = &session(home.path(), &[], &[request])[0];
+    assert_eq!(response["error"]["code"], -32602, "{response}");
 }
 
 #[test]
@@ -370,6 +583,53 @@ fn scan_text_returns_the_verdict_as_structured_content() {
     let verdict = assert_structured(home.path(), "promptguard_scan_text", &response["result"]);
     assert_eq!(verdict["decision"], "block");
     assert_eq!(verdict["blocked"], true);
+}
+
+fn scan_with(arguments: Value) -> Value {
+    let home = TempDir::new().unwrap();
+    let base = fake_api();
+    session(
+        home.path(),
+        &[
+            ("PROMPTGUARD_API_KEY", KEY),
+            ("PROMPTGUARD_BASE_URL", &base),
+        ],
+        &[call(1, "promptguard_scan_text", arguments)],
+    )[0]["result"]
+        .clone()
+}
+
+#[test]
+fn scan_text_scans_a_prompt_by_default() {
+    let result = scan_with(json!({"text": "hello"}));
+    assert_eq!(
+        result["structuredContent"]["reason"],
+        "test verdict for prompt"
+    );
+}
+
+#[test]
+fn scan_text_sends_the_content_type_it_is_given() {
+    let result = scan_with(json!({"text": "hello", "content_type": "response"}));
+    assert_eq!(
+        result["structuredContent"]["reason"],
+        "test verdict for response"
+    );
+}
+
+#[test]
+fn scan_text_rejects_an_unknown_content_type_as_a_tool_error() {
+    for bad in [json!("completion"), json!(1), json!(null)] {
+        let result = scan_with(json!({"text": "hello", "content_type": bad}));
+        assert_eq!(result["isError"], json!(true), "{bad}: {result}");
+        assert!(
+            result["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("content_type"),
+            "{result}"
+        );
+    }
 }
 
 #[test]
