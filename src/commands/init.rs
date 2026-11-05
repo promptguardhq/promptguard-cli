@@ -444,7 +444,7 @@ impl InitCommand {
                     // Signup flow
                     println!();
                     Output::info("Opening signup page in your browser...");
-                    let signup_url = "https://app.promptguard.co/signup";
+                    let signup_url = "https://app.promptguard.co/register";
 
                     // Try to open browser, but don't fail if it doesn't work
                     if let Err(e) = open::that(signup_url) {
@@ -454,7 +454,7 @@ impl InitCommand {
                     println!();
                     println!("Please sign up at: {signup_url}");
                     println!("After signing up, you can get your API key from:");
-                    println!("  https://app.promptguard.co/settings/api-keys");
+                    println!("  https://app.promptguard.co/dashboard/api-keys");
                     println!();
 
                     if Output::confirm("Have you signed up and got your API key?", false)? {
@@ -507,7 +507,7 @@ impl InitCommand {
                 Err(crate::error::PromptGuardError::Auth(msg)) => {
                     Output::error(&format!("API key rejected: {msg}"));
                     println!();
-                    println!("Check your key at https://app.promptguard.co/settings/api-keys");
+                    println!("Check your key at https://app.promptguard.co/dashboard/api-keys");
                     // Already rendered the actionable block above; hand main()
                     // a sentinel so it doesn't ALSO print "Authentication
                     // failed: …" (the double-print this fixes).

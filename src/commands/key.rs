@@ -105,7 +105,7 @@ impl KeyCommand {
         Output::header("API Key Management");
         Output::info("Key rotation requires API access.");
         println!("\nTo rotate your API key:");
-        println!("  1. Visit: https://app.promptguard.co/settings/api-keys");
+        println!("  1. Visit: https://app.promptguard.co/dashboard/api-keys");
         println!("  2. Generate a new key");
         println!("  3. Run: promptguard key update");
 
@@ -153,7 +153,7 @@ impl KeyCommand {
                 // Rotate key - requires dashboard access
                 Output::info("Key rotation requires API access.");
                 println!("\nTo rotate your API key:");
-                println!("  1. Visit: https://app.promptguard.co/settings/api-keys");
+                println!("  1. Visit: https://app.promptguard.co/dashboard/api-keys");
                 println!("  2. Generate a new key");
                 println!("  3. Run: promptguard key update");
                 Ok(())

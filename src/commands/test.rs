@@ -48,7 +48,7 @@ impl TestCommand {
             },
             Err(crate::error::PromptGuardError::Auth(msg)) => {
                 Output::error(&format!("✗ API key rejected: {msg}"));
-                println!("\nCheck your key at https://app.promptguard.co/settings/api-keys");
+                println!("\nCheck your key at https://app.promptguard.co/dashboard/api-keys");
                 return Ok(());
             },
             Err(e) => {

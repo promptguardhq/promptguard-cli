@@ -242,7 +242,7 @@ fn request_era(params: &serde_json::Value) -> std::result::Result<Era, ProtocolE
 // ---------------------------------------------------------------------------
 
 /// Where `promptguard_auth` sends the user for a key.
-const API_KEYS_URL: &str = "https://app.promptguard.co/settings/api-keys";
+const API_KEYS_URL: &str = "https://app.promptguard.co/dashboard/api-keys";
 
 fn scan_output_schema() -> serde_json::Value {
     // The `/security/scan` response (backend `developer/security/router.py`,

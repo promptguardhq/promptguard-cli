@@ -50,7 +50,7 @@ impl LoginCommand {
                 } else {
                     Output::error(&format!("Authentication failed: {msg}"));
                     Output::info(
-                        "Check your API key at https://app.promptguard.co/settings/api-keys",
+                        "Check your API key at https://app.promptguard.co/dashboard/api-keys",
                     );
                 }
                 // The styled error above is the user-facing report; return the

@@ -900,7 +900,7 @@ fn print_welcome() {
         Output::info("You're not logged in yet");
         println!();
         println!("Run 'promptguard login' to get started.");
-        println!("  Get your API key at https://app.promptguard.co/settings/api-keys");
+        println!("  Get your API key at https://app.promptguard.co/dashboard/api-keys");
     }
 
     println!();
