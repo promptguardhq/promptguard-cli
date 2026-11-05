@@ -17,7 +17,7 @@ A single 8–10 MB binary (8.3 MB on macOS ARM64 as of v2.2.3). No runtime inter
 |--------|---------|
 | **Shell script** (macOS, Linux x86_64) | `curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/install.sh \| sh` |
 | **Binary** | Download from [GitHub Releases](https://github.com/promptguardhq/promptguard-cli/releases/latest) |
-| **Cargo** (build from source) | `cargo install --locked --git https://github.com/promptguardhq/promptguard-cli --tag cli-v2.3.1` |
+| **Cargo** (build from source) | `cargo install --locked --git https://github.com/promptguardhq/promptguard-cli --tag cli-v2.4.0` |
 
 Every release publishes these prebuilt binaries, each with a `.sha256` checksum
 beside it (the shell script verifies it before installing):
@@ -43,6 +43,7 @@ promptguard init --api-key pg_live_xxx             # Integrate a project
 promptguard verify                                 # Test connectivity + scan + redact
 promptguard status                                 # Check configuration
 promptguard mcp -t stdio                           # Start MCP server
+promptguard mcp install                            # Add PromptGuard's MCP server to your AI clients
 ```
 
 ## Commands
@@ -56,7 +57,7 @@ promptguard mcp -t stdio                           # Start MCP server
 | `apply` | Apply pending code transformations |
 | `disable` / `enable` | Toggle PromptGuard on/off |
 | `revert` | Revert all changes (restores backups) |
-| `mcp` | Start MCP server for AI editor integration |
+| `mcp` | Start MCP server for AI editor integration; `mcp install` adds PromptGuard's MCP server to every AI client on the machine |
 | `mcp-proxy` | Wrap any stdio MCP server and check every tool call before it runs |
 | `redteam` | Run the adversarial corpus against your policy (`--test`, `--prompt`, or all) |
 | `verify` | End-to-end integration check: connectivity, auth, scan, and redact |
@@ -118,6 +119,46 @@ detectors and rules were left out or demoted to warn, and why.
 `tests/local_rules_tests.rs` checks that the Go and Rust regex engines agree on
 each rule, and that the port reaches the upstream engine's own verdict on its
 sample corpus.
+
+## Add PromptGuard to your AI clients
+
+One command adds PromptGuard's hosted MCP server, `https://api.promptguard.co/mcp`,
+to every AI client it finds on the machine:
+
+```bash
+promptguard mcp install                              # every detected client
+promptguard mcp install --clients claude-code,cursor # only these
+promptguard mcp install --dry-run                    # show what would change
+promptguard mcp install --local                      # the local stdio server instead
+promptguard mcp install --url https://staging-api.promptguard.co/mcp
+```
+
+| Client | `--clients` name | How it is configured |
+|---|---|---|
+| Claude Code | `claude-code` | `claude mcp add --transport http --scope user promptguard <url>`, when `claude` is on `PATH` |
+| Codex | `codex` | `codex mcp add promptguard --url <url>`, when `codex` is on `PATH` |
+| Cursor | `cursor` | `mcpServers.promptguard.url` in `~/.cursor/mcp.json` |
+| VS Code | `vscode` | `servers.promptguard` (`"type": "http"`) in the user `mcp.json`: `~/Library/Application Support/Code/User/` (macOS), `~/.config/Code/User/` (Linux), `%APPDATA%\Code\User\` (Windows) |
+| Windsurf | `windsurf` | `mcpServers.promptguard.serverUrl` in `~/.codeium/windsurf/mcp_config.json` |
+| Claude Desktop | `claude-desktop` | Takes remote servers only as connectors, so it prints the step: Settings → Connectors → Add custom connector. With `--local` it adds the stdio server to `claude_desktop_config.json` |
+
+No API key is written anywhere. Each client opens PromptGuard's sign-in the
+first time a tool needs your account. `--local` configures
+`promptguard mcp -t stdio` instead, which uses the key `promptguard login` stored.
+
+**It edits other programs' config files, so it is careful with them.** It merges
+one `promptguard` entry into the file and changes nothing else: other servers,
+key order and indentation stay as they were. The write is atomic, and the first
+time it changes a file it keeps the original beside it as `<file>.bak`. A
+`promptguard` entry that already points at the same server is reported as
+already configured and left untouched; one that points somewhere else is left
+alone unless you pass `--force`. A file that is not plain JSON (including one
+with comments) is reported and not touched.
+
+Each client gets one line: `configured`, `already configured`,
+`skipped: not installed`, `needs action: …` or `failed: …`. The command exits
+non-zero only when a client could not be configured, or when a client you named
+with `--clients` is not installed.
 
 ## MCP Server
 

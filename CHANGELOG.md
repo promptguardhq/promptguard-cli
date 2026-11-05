@@ -13,6 +13,24 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-11-05
+
+### Added
+
+- **`promptguard mcp install` adds PromptGuard's MCP server to every AI client
+  on the machine.** It finds Claude Code, Codex, Cursor, VS Code, Windsurf and
+  Claude Desktop and adds the hosted server, `https://api.promptguard.co/mcp`,
+  to each: through `claude mcp add` and `codex mcp add` for the first two, by
+  merging one `promptguard` entry into the JSON config of the others, and, for
+  Claude Desktop, which takes remote servers only as connectors, by printing
+  the step to add one. `--clients` limits it to named clients, `--dry-run`
+  shows what would change, `--local` installs the local stdio server instead
+  and `--url` points at another server. It never replaces a config file: other
+  entries, key order and indentation are kept, the write is atomic, the
+  original is kept as `<file>.bak`, an entry pointing elsewhere is left alone
+  without `--force`, and a file that is not valid JSON is reported and not
+  touched. No API key is written; each client signs in to PromptGuard itself.
+
 ## [2.3.1] - 2026-11-05
 
 ### Fixed

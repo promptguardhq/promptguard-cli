@@ -28,10 +28,10 @@ mod types;
 use clap::{Parser, Subcommand};
 use commands::{
     ApplyCommand, ConfigCommand, DashboardCommand, DisableCommand, DoctorCommand, EnableCommand,
-    FailMode, InitCommand, KeyAction, KeyCommand, LoginCommand, LogoutCommand, McpCommand,
-    McpProxyCommand, PolicyAction, PolicyCommand, ProjectsAction, ProjectsCommand, RedTeamCommand,
-    RedactCommand, RevertCommand, ScanCommand, StatusCommand, TestCommand, UpdateCommand,
-    VerifyCommand, WhoamiCommand,
+    FailMode, InitCommand, KeyAction, KeyCommand, LoginCommand, LogoutCommand, McpClient,
+    McpCommand, McpInstallCommand, McpProxyCommand, PolicyAction, PolicyCommand, ProjectsAction,
+    ProjectsCommand, RedTeamCommand, RedactCommand, RevertCommand, ScanCommand, StatusCommand,
+    TestCommand, UpdateCommand, VerifyCommand, WhoamiCommand,
 };
 
 /// Grouped command reference + examples for the top-level `--help`.
@@ -76,7 +76,7 @@ Commands:
     policy     Manage guardrail policies as YAML (policy-as-code)
 
   Other
-    mcp        Start an MCP server for IDE integration
+    mcp        Start an MCP server, or add it to your AI clients (mcp install)
     mcp-proxy  Wrap an MCP server and check every tool call it receives
     update     Check for CLI updates
 
@@ -449,7 +449,18 @@ Examples:
     ///
     /// Exposes PromptGuard tools over the MCP protocol so AI-powered
     /// editors (Cursor, Claude Code, Windsurf, etc.) can call them.
+    /// `promptguard mcp install` adds PromptGuard's MCP server to the AI
+    /// clients on this machine instead.
+    #[command(after_help = "\
+Examples:
+  promptguard mcp -t stdio                     Run the local stdio server
+  promptguard mcp install                      Add the hosted server to every detected client
+  promptguard mcp install --clients cursor     Only Cursor
+  promptguard mcp install --dry-run            Show what would change")]
     Mcp {
+        #[command(subcommand)]
+        action: Option<McpSubcommand>,
+
         /// Transport type (currently only 'stdio' is supported)
         #[arg(short, long, default_value = "stdio")]
         transport: String,
@@ -561,6 +572,51 @@ Examples:
         /// Output the URL as JSON instead of opening browser
         #[arg(long)]
         json: bool,
+    },
+}
+
+#[allow(clippy::doc_markdown)]
+#[derive(Subcommand)]
+enum McpSubcommand {
+    /// Add PromptGuard's MCP server to the AI clients on this machine
+    ///
+    /// Detects Claude Code, Codex, Cursor, VS Code, Windsurf and Claude
+    /// Desktop and adds PromptGuard's hosted MCP server
+    /// (https://api.promptguard.co/mcp) to each. Claude Code and Codex are
+    /// configured through their own `mcp add` commands; the others by merging
+    /// one `promptguard` entry into their JSON config, keeping every other
+    /// entry and a `.bak` of the original. No API key is written anywhere:
+    /// each client signs in to PromptGuard itself.
+    #[command(after_help = "\
+Clients: claude-code, codex, cursor, vscode, windsurf, claude-desktop
+
+Examples:
+  promptguard mcp install
+  promptguard mcp install --clients claude-code,cursor
+  promptguard mcp install --dry-run
+  promptguard mcp install --local              Use the local stdio server instead
+  promptguard mcp install --url https://staging-api.promptguard.co/mcp")]
+    Install {
+        /// Only these clients (comma-separated); default: every detected one
+        #[arg(long, value_enum, value_delimiter = ',', value_name = "CLIENTS")]
+        clients: Vec<McpClient>,
+
+        /// Print what would change, and change nothing
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Install the local stdio server (`promptguard mcp -t stdio`) instead
+        /// of the hosted URL
+        #[arg(long, conflicts_with = "url")]
+        local: bool,
+
+        /// The MCP server URL (default: https://api.promptguard.co/mcp)
+        #[arg(long)]
+        url: Option<String>,
+
+        /// Replace an existing `promptguard` entry that points elsewhere
+        #[arg(long)]
+        force: bool,
     },
 }
 
@@ -780,7 +836,35 @@ fn main() {
             )),
         },
 
-        Commands::Mcp { transport } => McpCommand { transport }.execute(),
+        Commands::Mcp {
+            action: None,
+            transport,
+        } => McpCommand { transport }.execute(),
+
+        Commands::Mcp {
+            action:
+                Some(McpSubcommand::Install {
+                    clients,
+                    dry_run,
+                    local,
+                    url,
+                    force,
+                }),
+            ..
+        } => McpInstallCommand {
+            clients,
+            dry_run,
+            local,
+            url,
+            force,
+        }
+        .execute()
+        .map(|exit_code| {
+            // 1 when a client that was asked for could not be configured.
+            if exit_code != 0 {
+                std::process::exit(exit_code);
+            }
+        }),
 
         Commands::McpProxy {
             fail_mode,
