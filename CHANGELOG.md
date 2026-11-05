@@ -13,6 +13,18 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-11-05
+
+### Fixed
+
+- **Links to the dashboard's API keys page work again.** `promptguard key`,
+  `init`, `login`, `test`, the MCP server's `promptguard_auth` and
+  `install.sh` sent you to `https://app.promptguard.co/settings/api-keys`,
+  which does not exist, so the step that tells you where to get a key ended on
+  a 404. They now link `https://app.promptguard.co/dashboard/api-keys`, and
+  `init`'s sign-up link goes to `/register` instead of the missing `/signup`.
+  A test now fails on any dashboard link the dashboard does not serve.
+
 ## [2.3.0] - 2026-11-05
 
 ### Added
