@@ -1,5 +1,9 @@
 # AGENTS.md
 
+| Owner | Last reviewed |
+|---|---|
+| @cto | 2026-11-09 |
+
 Rust CLI for PromptGuard, published as a single binary: AST-based (Tree-sitter)
 scanning for unprotected LLM calls, auto-fix code transforms, MCP server and
 `mcp-proxy` modes, red team testing, and policy management.
@@ -93,6 +97,8 @@ identifiers, as variables (`vars.*`). A workflow that names any `secrets.*` but
 and how to add a secret with its per-secret grant:
 [`ENVIRONMENT_VARIABLES.md` § CI/CD-only](https://github.com/promptguardhq/promptguard/blob/main/docs/04_engineering/reference/ENVIRONMENT_VARIABLES.md#cicd-only)
 in the platform repo.
+
+`.claude/settings.json` (committed) denies Claude Code reads of real `.env` files, and hand-edits of `tests/mcp-tool-definitions.json`, a byte copy of the platform's manifest (copy it across instead). Machine-only permissions go in `.claude/settings.local.json`.
 
 ## Agent skills
 
