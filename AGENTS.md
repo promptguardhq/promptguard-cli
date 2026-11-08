@@ -47,7 +47,8 @@ opt-in because fmt-check + clippy + test + build takes minutes on this workspace
 The `Makefile` is the source of truth for commands (`make help`). After editing
 Rust, run `make format` and `make lint`, and leave clippy at zero warnings
 (`make lint` treats them as errors across all targets). Run `make ci` before
-pushing; it is what CI runs.
+pushing. CI also runs the secrets, agent-file and dash checks, which `make ci`
+does not; the pre-push hook runs the last two.
 
 ## Coding standards
 
