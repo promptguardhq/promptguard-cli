@@ -51,6 +51,12 @@ jobs:
       - name: GitHub holds no secrets
         run: python3 scripts/check_no_github_secrets.py --check
 
+      # Agent files load and resolve (CLAUDE.md symlinks AGENTS.md, links and
+      # anchors resolve, no placeholders), and no em or en dashes. Vendored
+      # from the platform monorepo's scripts/utils/.
+      - name: Agent files and no em/en dashes
+        run: python3 scripts/check_agent_files.py --check && python3 scripts/check_no_dashes.py --check
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # v1 release tag
         with:
