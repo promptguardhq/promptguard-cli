@@ -8,21 +8,31 @@
 set -euo pipefail
 
 # ~/.zshrc is zsh syntax and breaks when sourced from bash -- name the toolchain
-# paths it would have added instead.
-export PATH="$HOME/.cargo/bin:$HOME/.nvm/versions/node/v24.18.0/bin:$HOME/Library/pnpm:$HOME/Library/pnpm/bin:/opt/homebrew/opt/python@3.13/bin:/opt/homebrew/opt/libpq/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+# paths it would have added instead. The newest installed nvm node is found,
+# not named: a pinned version directory breaks the hook on every node upgrade.
+nvm_bin=""
+if [ -d "$HOME/.nvm/versions/node" ]; then
+  nvm_bin=$(find "$HOME/.nvm/versions/node" -mindepth 2 -maxdepth 2 -name bin -type d | sort -V | tail -n 1)
+fi
+export PATH="$HOME/.cargo/bin:${nvm_bin:+$nvm_bin:}$HOME/Library/pnpm:$HOME/Library/pnpm/bin:/opt/homebrew/opt/python@3.13/bin:/opt/homebrew/opt/libpq/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
 cd "$(git rev-parse --show-toplevel)"
 
 # Agent files load and resolve, and no em or en dashes: the same step as CI.
-# Before the gitleaks check, which exits early when gitleaks is missing.
 python3 scripts/check_agent_files.py --check
 python3 scripts/check_no_dashes.py --check
 
-
-command -v gitleaks >/dev/null 2>&1 || {
-  echo "gitleaks not installed; skipping the local secret scan." >&2
-  echo "  brew install gitleaks" >&2
-  exit 0
-}
+# A missing scanner fails the push: a gate that passes when its tool is absent
+# looks exactly like a clean scan. One-off override, written down per push:
+#   git -c promptguard.skipGitleaks=true push
+if ! command -v gitleaks >/dev/null 2>&1; then
+  if [ "$(git config --bool promptguard.skipGitleaks 2>/dev/null || echo false)" = "true" ]; then
+    echo "pre-push: gitleaks not installed; secret scan SKIPPED by promptguard.skipGitleaks." >&2
+  else
+    echo "pre-push: gitleaks is not installed, so the secret scan cannot run." >&2
+    echo "  brew install gitleaks    (or, once: git -c promptguard.skipGitleaks=true push)" >&2
+    exit 1
+  fi
+fi
 
 # Set by pre-commit at the pre-push stage. Falling back to "everything not yet
 # on a remote" covers a direct hook invocation and a brand-new branch alike.
