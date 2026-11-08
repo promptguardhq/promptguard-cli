@@ -171,7 +171,7 @@ func TestDumpOfflinePack(t *testing.T) {
 	}
 
 	// Parity corpus: the source's handwritten eval sets plus the jailbreak
-	// corpus. secrets.json and pii.json are left out on purpose — their
+	// corpus. secrets.json and pii.json are left out on purpose, their
 	// samples are credential-shaped and would trip the secret scanner on
 	// push; the Rust tests build secret-shaped strings at run time instead.
 	var samples []corpusSample

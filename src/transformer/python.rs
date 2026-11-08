@@ -35,7 +35,7 @@ fn transform_args(
     }
 
     let args_text = &source[args_node.start_byte()..args_node.end_byte()];
-    // Strip exactly ONE outer `(` / `)` — the delimiters of this
+    // Strip exactly ONE outer `(` / `)`: the delimiters of this
     // `argument_list` node. `trim_end_matches(')')` stripped *every* trailing
     // paren, so `OpenAI(api_key=os.getenv("KEY"))` lost the inner call's
     // closing paren too and produced a SyntaxError.
@@ -99,7 +99,7 @@ fn transform_args(
 ///
 /// Appending `base_url=...` after `**cfg` raises `TypeError: got multiple
 /// values for keyword argument 'base_url'` at runtime when `cfg` already
-/// carries a `base_url` — the transformer cannot know what the splat expands
+/// carries a `base_url`: the transformer cannot know what the splat expands
 /// to, so these calls must be left untouched (mirroring the TypeScript
 /// identifier-argument skip) and reported as needing manual routing.
 fn args_have_splat(args_node: tree_sitter::Node) -> bool {
@@ -321,7 +321,7 @@ mod tests {
         assert_eq!(out, input);
     }
 
-    /// `*args` forwarding is also dynamic — leave it alone.
+    /// `*args` forwarding is also dynamic, leave it alone.
     #[test]
     fn list_splat_args_left_untouched_and_reported() {
         let input = "from openai import OpenAI\nclient = OpenAI(*args)\n";
@@ -394,8 +394,8 @@ mod tests {
 
     /// Bedrock is detect-only: `boto3.client()` accepts neither `api_key=`
     /// nor `base_url=`, so the transformer must leave every boto3 call
-    /// untouched (previously it rewrote ALL `boto3.client(...)` calls — S3,
-    /// `DynamoDB`, and bedrock-runtime alike — into `TypeError`-raising
+    /// untouched (previously it rewrote ALL `boto3.client(...)` calls, S3,
+    /// `DynamoDB`, and bedrock-runtime alike, into `TypeError`-raising
     /// constructor calls).
     #[test]
     fn bedrock_transform_is_a_noop_for_all_boto3_clients() {
@@ -422,7 +422,7 @@ mod tests {
     }
 
     /// Gemini is detect-only: `genai.Client.__init__` has NO `base_url` param
-    /// (verified against `google-genai` — injecting one raised `TypeError` at
+    /// (verified against `google-genai`: injecting one raised `TypeError` at
     /// runtime), so the transformer must leave `genai.Client(...)` calls
     /// byte-for-byte unchanged (mirrors the Bedrock detect-only test).
     #[test]
@@ -523,7 +523,7 @@ mod tests {
     }
 
     /// Async client constructors (`AsyncOpenAI`) accept `base_url` too and must
-    /// be transformed — previously they were neither detected nor rewritten.
+    /// be transformed, previously they were neither detected nor rewritten.
     #[test]
     fn async_client_constructor_is_transformed() {
         let input = "from openai import AsyncOpenAI\nclient = AsyncOpenAI(api_key=key)\n";

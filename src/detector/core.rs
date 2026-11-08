@@ -230,7 +230,7 @@ pub fn detect_all_providers_in_file(file_path: &Path) -> Result<Vec<(Provider, D
 mod tests {
     use super::*;
 
-    /// Every (grammar, provider) pair must have a compiled query — a missing
+    /// Every (grammar, provider) pair must have a compiled query, a missing
     /// entry means a query template failed to compile for that grammar.
     #[test]
     fn query_cache_is_complete() {
@@ -307,7 +307,7 @@ mod tests {
     }
 
     /// Cohere Python detection must match `cohere.Client` and
-    /// `cohere.ClientV2` (the real SDK classes — there is NO `CohereClient`,
+    /// `cohere.ClientV2` (the real SDK classes, there is NO `CohereClient`,
     /// which the registry previously used, so real Cohere code was never
     /// detected). A bare `Client(...)` is too generic and must NOT match.
     #[test]
@@ -338,7 +338,7 @@ mod tests {
     }
 
     /// Async client classes (`AsyncOpenAI`/`AsyncAnthropic`/`AsyncGroq`/
-    /// `AsyncInferenceClient`) must be detected — previously they were
+    /// `AsyncInferenceClient`) must be detected, previously they were
     /// invisible while `enable --runtime` claimed full coverage.
     #[test]
     fn async_client_classes_are_detected() {

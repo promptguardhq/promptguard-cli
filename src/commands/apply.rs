@@ -70,7 +70,7 @@ impl ApplyCommand {
                     Output::step(&format!("✓ {}", rel_path.display()));
                 } else if result.needs_manual_routing > 0 {
                     Output::excluded(&format!(
-                        "{} (skipped: {} call site(s) pass dynamic arguments — route through PromptGuard manually)",
+                        "{} (skipped: {} call site(s) pass dynamic arguments, route through PromptGuard manually)",
                         rel_path.display(),
                         result.needs_manual_routing
                     ));

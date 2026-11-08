@@ -166,7 +166,7 @@ impl Output {
     /// Ask a yes/no question and return the answer.
     ///
     /// Non-interactive safety: when stdin is not a TTY (piped, redirected, or
-    /// closed — e.g. spawned by an editor extension or CI), or when
+    /// closed, e.g. spawned by an editor extension or CI), or when
     /// `read_line` hits EOF, this falls through to `default` instead of
     /// blocking forever on input that will never arrive. Callers that need a
     /// scripted "yes" should pass their command's `--yes` flag rather than

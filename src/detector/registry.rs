@@ -112,8 +112,8 @@ impl ProviderInfo {
     /// Returns `None` when the provider is missing from the registry
     /// (previously this silently fell back to the `OpenAI` entry, producing
     /// wrong parameter names instead of an explicit failure). The registry
-    /// is exhaustive over `Provider` — enforced by
-    /// `test_all_providers_in_registry` — so callers may treat `None` as
+    /// is exhaustive over `Provider`: enforced by
+    /// `test_all_providers_in_registry`, so callers may treat `None` as
     /// "no metadata available" and skip gracefully.
     pub fn get(provider: Provider) -> Option<&'static ProviderInfo> {
         PROVIDERS.iter().find(|info| info.provider == provider)

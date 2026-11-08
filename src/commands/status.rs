@@ -29,8 +29,8 @@ impl StatusCommand {
         if self.json {
             let output = serde_json::json!({
                 "initialized": true,
-                // Derived from config.enabled — the same field `disable` and
-                // `enable` toggle — so JSON and human output agree.
+                // Derived from config.enabled, the same field `disable` and
+                // `enable` toggle, so JSON and human output agree.
                 "status": if config.enabled { "active" } else { "disabled" },
                 "enabled": config.enabled,
                 "runtime_mode": config.runtime_mode,

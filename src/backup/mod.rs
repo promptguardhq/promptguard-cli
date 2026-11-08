@@ -53,7 +53,7 @@ impl BackupManager {
     /// Restore `file_path` from its backup.
     ///
     /// Returns `Ok(true)` when the backup existed and was copied back, and
-    /// `Ok(false)` when no backup file exists — nothing was restored, and
+    /// `Ok(false)` when no backup file exists, nothing was restored, and
     /// callers must report that honestly instead of counting it as a
     /// successful restore.
     pub fn restore_backup(&self, file_path: &Path) -> Result<bool> {

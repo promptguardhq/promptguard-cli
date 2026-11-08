@@ -86,7 +86,7 @@ impl WhoamiCommand {
             if connected {
                 Output::success("API is reachable");
             } else {
-                Output::warning("API is unreachable — check your network or key");
+                Output::warning("API is unreachable, check your network or key");
             }
         }
 

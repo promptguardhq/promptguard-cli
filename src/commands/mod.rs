@@ -153,7 +153,7 @@ pub fn run_transform_pipeline(
 /// This maps the common not-found case to "File not found: <path>", the
 /// "pointed at a directory" case to a clear "Not a file: …", and keeps other
 /// IO errors readable (permission denied, etc.) WITHOUT the "(os error N)"
-/// tail — the fallback interpolates `ErrorKind`'s clean description, never the
+/// tail, the fallback interpolates `ErrorKind`'s clean description, never the
 /// error's `Display`, which would re-append the errno.
 pub fn read_file_friendly(file_path: &str) -> crate::error::Result<String> {
     std::fs::read_to_string(file_path).map_err(|e| {
@@ -171,7 +171,7 @@ pub fn read_file_friendly(file_path: &str) -> crate::error::Result<String> {
                 format!("Not a file: {file_path} (expected a file, found a directory)")
             },
             // Interpolate the ErrorKind's clean description (e.g. "invalid
-            // data"), NOT `{e}` — the latter re-appends "(os error N)".
+            // data"), NOT `{e}`: the latter re-appends "(os error N)".
             kind => format!("Could not read file '{file_path}': {kind}"),
         };
         crate::error::PromptGuardError::Io(std::io::Error::new(e.kind(), msg))

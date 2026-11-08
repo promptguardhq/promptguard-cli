@@ -343,7 +343,7 @@ impl ConfigManager {
         validate_env_file_path(&config.env_file)?;
 
         // Security: proxy_url and env_var_name are interpolated into
-        // generated source code — validate with strict allowlists.
+        // generated source code, validate with strict allowlists.
         validate_proxy_url(&config.proxy_url)?;
         validate_env_var_name(&config.env_var_name)?;
         validate_backup_extension(&config.backup_extension)?;

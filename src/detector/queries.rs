@@ -33,7 +33,7 @@ pub fn get_typescript_query(provider: Provider) -> String {
 ///
 /// NOTE: the patterns are emitted as SEPARATE top-level query patterns, not
 /// one `[...]` alternation. Branches of a top-level alternation share a
-/// single pattern index, so their `#eq?` predicates accumulate — a capture
+/// single pattern index, so their `#eq?` predicates accumulate, a capture
 /// name reused across branches with different expected values (`@function`
 /// = `"OpenAI"` vs `"AsyncOpenAI"`) could then never match anything.
 fn standard_python_detection_query(info: &ProviderInfo) -> String {
@@ -83,7 +83,7 @@ fn standard_python_transform_query(info: &ProviderInfo) -> String {
 
     // Both the sync class and (when the registry declares one) the async
     // client class accept the same base_url= keyword, so both are
-    // transformable. Separate top-level patterns, NOT one alternation —
+    // transformable. Separate top-level patterns, NOT one alternation,
     // see standard_python_detection_query for why.
     for class_name in [info.py_class_name, info.py_async_class_name] {
         if class_name.is_empty() {
@@ -124,8 +124,8 @@ fn standard_python_transform_query(info: &ProviderInfo) -> String {
 
 /// Module-constrained detection/transform patterns for a provider whose class
 /// name is too generic to match bare (e.g. Cohere's `Client` / `ClientV2`).
-/// Matches only `module.Class(...)` attribute calls, never a bare `Class(...)`
-/// — mirroring the Gemini handling, which is why a bare `from cohere import
+/// Matches only `module.Class(...)` attribute calls, never a bare `Class(...)`,
+/// mirroring the Gemini handling, which is why a bare `from cohere import
 /// Client; Client(...)` is intentionally not matched.
 fn module_qualified_query(module_name: &str, class_names: &[&str]) -> String {
     let mut patterns = String::new();
@@ -235,11 +235,11 @@ pub fn get_python_detection_query(provider: Provider) -> String {
 pub fn get_python_transform_query(provider: Provider) -> String {
     match provider {
         // Cohere's `cohere.Client` / `cohere.ClientV2` BOTH accept a valid
-        // `base_url=` kwarg (verified against cohere 7.x), so — unlike Gemini
-        // — Cohere is transformable, not detect-only. Same module-qualified
+        // `base_url=` kwarg (verified against cohere 7.x), so, unlike Gemini,
+        // Cohere is transformable, not detect-only. Same module-qualified
         // patterns as detection.
         Provider::Cohere => module_qualified_query("cohere", &["Client", "ClientV2"]),
-        // Gemini and Bedrock are both DETECT-ONLY — an empty query compiles
+        // Gemini and Bedrock are both DETECT-ONLY, an empty query compiles
         // and matches nothing, so the transformer is a no-op:
         //  * Gemini: `genai.Client.__init__` has no `base_url` param (injecting
         //    one raised TypeError at runtime), and the TS SDK reads its base
@@ -247,7 +247,7 @@ pub fn get_python_transform_query(provider: Provider) -> String {
         //    ignored). Runtime coverage is honestly absent (see templates.rs);
         //    use static transform mode (point httpOptions.baseUrl at the PromptGuard proxy).
         //  * Bedrock: boto3 clients authenticate via AWS credentials/SigV4, and
-        //    boto3.client() accepts neither api_key= nor base_url= — injecting
+        //    boto3.client() accepts neither api_key= nor base_url=, injecting
         //    them raised TypeError at runtime.
         Provider::Gemini | Provider::Bedrock => String::new(),
         _ => ProviderInfo::get(provider)

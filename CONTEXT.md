@@ -52,7 +52,7 @@ touches the network.
 _Avoid_: scan (see **Threat scan**), static analysis, code analysis
 
 **Transform**:
-An edit the CLI makes to a codebase file — injecting a base URL at a call site.
+An edit the CLI makes to a codebase file, injecting a base URL at a call site.
 Every transform is backed by a backup.
 _Avoid_: patch, fix, auto-fix, rewrite
 
@@ -70,7 +70,7 @@ and a codebase is in one or the other, never both.
 **Static transform mode**:
 Interception performed before the app runs, by transforming each call site's
 base URL in source. The default. Cannot reach unroutable call sites.
-_Avoid_: proxy mode — both modes route through the proxy, so it names the one
+_Avoid_: proxy mode, both modes route through the proxy, so it names the one
 property the modes share rather than what separates them. Also avoid: static
 mode, transform mode.
 
@@ -178,7 +178,7 @@ hand-edited; regenerated, then re-pinned by its tests.
 _Avoid_: ruleset, signatures, offline rules
 
 **Decision**:
-The API's verdict on scanned content — allow or block.
+The API's verdict on scanned content, allow or block.
 _Avoid_: result, verdict, outcome
 
 **Threat type**:

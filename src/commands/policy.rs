@@ -75,7 +75,7 @@ impl PolicyCommand {
     fn load_yaml(path: &str) -> Result<serde_json::Value> {
         // Route through the shared helper so file-read errors read the same as
         // scan/redact ("File not found: …" / "Not a file: …") with no raw
-        // "(os error N)" tail — instead of the old "Failed to read …: … (os
+        // "(os error N)" tail, instead of the old "Failed to read …: … (os
         // error 2)".
         let content = super::read_file_friendly(path)?;
 

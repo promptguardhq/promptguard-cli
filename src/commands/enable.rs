@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 pub struct EnableCommand {
     pub runtime: bool,
-    /// Skip the confirmation prompt. Required for non-interactive callers —
+    /// Skip the confirmation prompt. Required for non-interactive callers,
     /// e.g. the VS Code extension spawns the CLI with piped stdin that never
     /// delivers input.
     pub yes: bool,
@@ -126,7 +126,7 @@ impl EnableCommand {
         // hard failure).
         for provider in providers.iter().filter(|p| !p.has_runtime_shim()) {
             Output::warning(&format!(
-                "Runtime shim not yet available for {} — use static transform mode instead (run 'promptguard enable' without --runtime)",
+                "Runtime shim not yet available for {}, use static transform mode instead (run 'promptguard enable' without --runtime)",
                 provider.display_name()
             ));
         }
@@ -204,7 +204,7 @@ impl EnableCommand {
         // Be honest about coverage: list exactly which client classes the
         // generated shim patches instead of claiming "100% - All SDK calls".
         let mut any_patched = false;
-        println!("\n  Coverage — calls constructed via these patched classes route");
+        println!("\n  Coverage, calls constructed via these patched classes route");
         println!("  through PromptGuard:");
         for provider in &providers {
             let classes = crate::shim::templates::get_python_patched_classes(*provider);
@@ -214,7 +214,7 @@ impl EnableCommand {
             }
         }
         if !any_patched {
-            println!("    (none — no configured provider has a runtime shim yet)");
+            println!("    (none, no configured provider has a runtime shim yet)");
         }
         println!("  Other classes/SDKs are not intercepted by the runtime shim.");
 
@@ -274,7 +274,7 @@ impl EnableCommand {
                     Output::step(&format!("✓ {}", rel_path.display()));
                 } else if result.needs_manual_routing > 0 {
                     Output::excluded(&format!(
-                        "{} (skipped: {} call site(s) pass dynamic arguments — route through PromptGuard manually)",
+                        "{} (skipped: {} call site(s) pass dynamic arguments, route through PromptGuard manually)",
                         rel_path.display(),
                         result.needs_manual_routing
                     ));

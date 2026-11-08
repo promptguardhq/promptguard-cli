@@ -45,7 +45,7 @@ impl RedactCommand {
             ));
         };
 
-        // Resolve credentials from env var, project config, or global login —
+        // Resolve credentials from env var, project config, or global login,
         // this command works without a project being initialized.
         let (api_key, base_url) = resolve_session()?;
 

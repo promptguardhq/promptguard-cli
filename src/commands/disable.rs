@@ -11,10 +11,10 @@ pub(crate) enum RestoreOutcome {
     /// The backup was copied back over the transformed file.
     Restored {
         /// The backup file that was restored from (so callers that fully
-        /// remove `PromptGuard` — `revert` — can delete it afterwards).
+        /// remove `PromptGuard`: `revert`: can delete it afterwards).
         backup_path: PathBuf,
     },
-    /// The backup file no longer exists — nothing was restored.
+    /// The backup file no longer exists, nothing was restored.
     MissingBackup(PathBuf),
     Failed,
 }
@@ -56,13 +56,13 @@ pub(crate) fn restore_backup_file(
 pub(crate) struct BackupRestoreSummary {
     pub restored: usize,
     /// Recorded backups that no longer exist on disk: those files were NOT
-    /// restored and keep their transformations — callers must report them.
+    /// restored and keep their transformations, callers must report them.
     pub missing: Vec<PathBuf>,
 }
 
 /// Restore every backup recorded in `config.metadata.backups`.
 ///
-/// Only backups `PromptGuard` itself created are touched — never glob the
+/// Only backups `PromptGuard` itself created are touched, never glob the
 /// tree for `*.bak`, which would clobber backup files the user created for
 /// their own reasons. With `delete_backups`, each successfully restored
 /// backup file is removed afterwards (used by `revert`, which removes
@@ -140,7 +140,7 @@ pub(crate) fn remove_shim_artifacts(root_path: &Path) -> Result<(usize, bool)> {
 
 pub struct DisableCommand {
     /// Skip confirmation prompts (each prompt falls through to its default
-    /// answer). Required for non-interactive callers — e.g. the VS Code
+    /// answer). Required for non-interactive callers, e.g. the VS Code
     /// extension spawns the CLI with piped stdin that never delivers input.
     pub yes: bool,
 }
@@ -206,7 +206,7 @@ impl DisableCommand {
             }
         } else {
             // Restore backups (static transform mode). Only restore the backups that
-            // PromptGuard itself created (recorded in metadata.backups) —
+            // PromptGuard itself created (recorded in metadata.backups),
             // never glob the tree for *.bak, which would clobber backup files
             // the user created for their own reasons and destroy their work.
             let backup_manager = BackupManager::new(Some(config.backup_extension.clone()));
@@ -219,7 +219,7 @@ impl DisableCommand {
                 // Nothing recorded. Do NOT auto-restore every *.bak in the
                 // tree; offer an explicit, clearly-labelled opt-in instead.
                 Output::warning(
-                    "No PromptGuard-created backups are recorded in .promptguard.json — \
+                    "No PromptGuard-created backups are recorded in .promptguard.json, \
                      nothing to restore automatically.",
                 );
 

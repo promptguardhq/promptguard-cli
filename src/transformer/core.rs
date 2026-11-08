@@ -128,7 +128,7 @@ where
 mod tests {
     use super::*;
 
-    /// Every (grammar, provider) transform query must compile — a missing
+    /// Every (grammar, provider) transform query must compile, a missing
     /// entry means a transform query template failed to compile.
     #[test]
     fn transform_query_cache_is_complete() {

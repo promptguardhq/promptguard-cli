@@ -211,10 +211,10 @@ impl InitCommand {
                 } else if result.needs_manual_routing > 0 {
                     // Be honest: these call sites pass dynamic arguments
                     // (`**cfg`, an identifier options object, ...) that could
-                    // already carry a base_url — injecting one could raise a
+                    // already carry a base_url, injecting one could raise a
                     // TypeError at runtime, so they were left untouched.
                     Output::excluded(&format!(
-                        "{} (skipped: {} call site(s) pass dynamic arguments — route through PromptGuard manually)",
+                        "{} (skipped: {} call site(s) pass dynamic arguments, route through PromptGuard manually)",
                         rel_path.display(),
                         result.needs_manual_routing
                     ));
@@ -271,7 +271,7 @@ impl InitCommand {
             config_manager.save(&config)?;
             Output::step(".promptguard.json (created)");
 
-            // Both files contain the API key in plaintext — keep them out
+            // Both files contain the API key in plaintext, keep them out
             // of version control.
             match Self::ensure_gitignored(&root_path, &[".promptguard.json", &self.env_file]) {
                 Ok(added) if !added.is_empty() => {
@@ -281,7 +281,7 @@ impl InitCommand {
                 Err(e) => {
                     Output::warning(&format!(
                         "Could not update .gitignore ({e}). Add .promptguard.json and {} \
-                         to it manually — both contain your API key.",
+                         to it manually, both contain your API key.",
                         self.env_file
                     ));
                 },
@@ -503,7 +503,7 @@ impl InitCommand {
                 Ok(()) => {
                     Output::success("API key validated successfully");
                 },
-                // 401/403: the key is definitively bad — don't offer to continue.
+                // 401/403: the key is definitively bad, don't offer to continue.
                 Err(crate::error::PromptGuardError::Auth(msg)) => {
                     Output::error(&format!("API key rejected: {msg}"));
                     println!();

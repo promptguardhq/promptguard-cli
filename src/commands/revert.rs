@@ -11,7 +11,7 @@ use crate::output::Output;
 /// restore the recorded backups of transformed files, remove injected shim
 /// imports and the generated `.promptguard/` directory, and only then remove
 /// the env entry and config. (Previously it deleted the API key and config
-/// while leaving transformed files routed at the proxy — a broken app.)
+/// while leaving transformed files routed at the proxy, a broken app.)
 pub struct RevertCommand {
     pub yes: bool,
 }
@@ -66,7 +66,7 @@ impl RevertCommand {
         }
 
         // 1. Restore the files PromptGuard transformed, from the backups it
-        //    recorded in metadata (never glob the tree for *.bak — that could
+        //    recorded in metadata (never glob the tree for *.bak, that could
         //    clobber backup files the user created themselves). Since revert
         //    removes PromptGuard entirely, restored backups are deleted.
         if recorded_backups > 0 {
@@ -79,15 +79,15 @@ impl RevertCommand {
             warn_missing_backups(&summary.missing, &root_path);
             if summary.restored < recorded_backups {
                 Output::warning(
-                    "Files without a restorable backup keep their transformations — \
+                    "Files without a restorable backup keep their transformations, \
                      revert them with git (e.g. 'git checkout -- <file>').",
                 );
             }
         } else if config.metadata.files_managed.is_empty() {
-            Output::step("No transformed files recorded — nothing to restore");
+            Output::step("No transformed files recorded, nothing to restore");
         } else {
             Output::warning(
-                "No PromptGuard-created backups are recorded — transformed files were \
+                "No PromptGuard-created backups are recorded, transformed files were \
                  NOT reverted and keep routing through the proxy. Restore them with \
                  git (e.g. 'git checkout -- .').",
             );
@@ -108,7 +108,7 @@ impl RevertCommand {
             Output::step("No shim artifacts found");
         }
 
-        // 3. Remove the API key from the env file — only after the code no
+        // 3. Remove the API key from the env file, only after the code no
         //    longer routes through the proxy, so we never leave a transformed
         //    app without its key.
         Output::section("Removing configuration...", "🗑️");

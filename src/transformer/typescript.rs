@@ -49,7 +49,7 @@ fn transform_ts_object(
         return None;
     }
     let object_text = &source[object_node.start_byte()..object_node.end_byte()];
-    // Strip exactly ONE outer `{` / `}` — the delimiters of this `object`
+    // Strip exactly ONE outer `{` / `}`: the delimiters of this `object`
     // node. `trim_end_matches('}')` stripped *every* trailing brace, so a
     // nested object literal like `{apiKey:k, defaults:{timeout:1}}` lost its
     // inner closing brace and became invalid.
@@ -107,7 +107,7 @@ fn transform_ts_object(
     Some(new_object)
 }
 
-/// Build a replacement for an EMPTY argument list — `new OpenAI()` — by
+/// Build a replacement for an EMPTY argument list, `new OpenAI()`: by
 /// synthesizing an options object carrying the api key and proxy URL,
 /// mirroring the Python transformer's empty-args behavior. Previously these
 /// calls were detected but silently reported "(no changes needed)" and never
@@ -130,7 +130,7 @@ fn synthesize_ts_options(
     let info = ProviderInfo::get(provider)?;
 
     // Detect-only providers (e.g. Bedrock) have empty parameter names in the
-    // registry — same guard as transform_ts_object.
+    // registry, same guard as transform_ts_object.
     if info.ts_base_url_param.is_empty() || info.ts_api_key_param.is_empty() {
         return None;
     }
@@ -218,7 +218,7 @@ impl Transformer for TypeScriptTransformer {
                 }
                 // Synthesis declined. For a transformable provider that means
                 // the options come from a dynamic argument (identifier,
-                // spread, call, …) — the call needs manual routing; report
+                // spread, call, …), the call needs manual routing; report
                 // that instead of silently claiming "no changes needed".
                 let transformable = ProviderInfo::get(provider).is_some_and(|i| {
                     !i.ts_base_url_param.is_empty() && !i.ts_api_key_param.is_empty()
@@ -321,7 +321,7 @@ mod tests {
     }
 
     /// Bedrock has empty parameter names in the registry (detect-only).
-    /// Interpolating them produced `{ : ..., : "..." }` — a syntax error —
+    /// Interpolating them produced `{ : ..., : "..." }`: a syntax error,
     /// so the transformer must leave `BedrockRuntimeClient` untouched.
     #[test]
     fn bedrock_runtime_client_is_left_untouched() {
@@ -346,7 +346,7 @@ mod tests {
     }
 
     /// Regression: `new OpenAI()` with NO options object was detected but
-    /// silently reported "(no changes needed)" — the call never routed
+    /// silently reported "(no changes needed)", the call never routed
     /// through the proxy. An options object must be synthesized, mirroring
     /// the Python empty-args behavior.
     #[test]
@@ -379,7 +379,7 @@ mod tests {
     }
 
     /// A non-object argument (identifier, call, spread, …) means the options
-    /// come from elsewhere — the call must be left untouched.
+    /// come from elsewhere, the call must be left untouched.
     #[test]
     fn identifier_argument_is_left_untouched() {
         let input = "import OpenAI from \"openai\";\nconst client = new OpenAI(config);\n";
@@ -427,7 +427,7 @@ mod tests {
     /// Gemini is detect-only in TS: `@google/genai` reads its base URL from
     /// `httpOptions.baseUrl`, NOT a top-level `baseURL` (verified against the
     /// package's `GoogleGenAIOptions` type, which has no top-level base-URL
-    /// field — only `httpOptions` carries `baseUrl`).
+    /// field, only `httpOptions` carries `baseUrl`).
     /// A `baseURL:` injection would be silently ignored (false coverage), so
     /// the transformer must leave `new GoogleGenAI({...})` untouched.
     #[test]

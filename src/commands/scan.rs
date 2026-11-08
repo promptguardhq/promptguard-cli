@@ -232,7 +232,7 @@ impl ScanCommand {
     fn execute_api_scan(&self) -> Result<i32> {
         let content = self.content()?;
 
-        // Resolve credentials from env var, project config, or global login —
+        // Resolve credentials from env var, project config, or global login,
         // this command works without a project being initialized.
         let (api_key, base_url) = resolve_session()?;
 

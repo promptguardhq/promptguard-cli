@@ -14,13 +14,13 @@ nothing:
 - **The spec does not carry the information worth generating.** The one field
   where a generated type would help is `threatType`, and in
   `openapi-developer.json` it is `{"anyOf": [{"type": "string"}, {"type":
-  "null"}]}` — no enum. The real values live in the backend's `ThreatType`
+  "null"}]}`: no enum. The real values live in the backend's `ThreatType`
   StrEnum and never reach the published spec. A generator would emit
   `Option<String>`, which is what `SecurityScanResponse` already declares by
   hand. Same for `decision` and `reason`: bare strings.
 - **Part of the surface is not in the published spec at all.** `promptguard
   redteam` calls `/internal/redteam/*`, which is internal-domain and appears
-  only in the full `openapi.json` — a spec that is `.mintignore`d and not served
+  only in the full `openapi.json`: a spec that is `.mintignore`d and not served
   publicly. `/health` is in neither spec. A sync would cover some endpoints and
   silently skip others, which is worse than covering none: it reads as complete.
 - **The surface is small and slow.** Seven endpoints, and the structs pin the
@@ -32,7 +32,7 @@ nothing:
 
 **What protects this repo instead:** the structs are `#[derive(Deserialize)]`
 without `deny_unknown_fields`, so an added field is ignored and a *removed* or
-renamed one fails at parse time in the integration tests — loudly, at the call
+renamed one fails at parse time in the integration tests, loudly, at the call
 site, in the repo that owns the code.
 
 Value vocabularies the backend owns (such as `VALID_PII_MODES` in

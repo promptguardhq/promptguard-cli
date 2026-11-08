@@ -316,7 +316,7 @@ mod tests {
         assert!(content.contains("https://api.promptguard.co/api/v1"));
     }
 
-    /// The Python shim must patch the async client classes too — async
+    /// The Python shim must patch the async client classes too, async
     /// clients used to bypass the shim entirely while `enable --runtime`
     /// claimed full coverage.
     #[test]

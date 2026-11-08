@@ -4,12 +4,12 @@
 
 # PromptGuard CLI
 
-> Drop-in LLM security for your applications — built with Rust + Tree-sitter
+> Drop-in LLM security for your applications, built with Rust + Tree-sitter
 
 ![Rust](https://img.shields.io/badge/rust-stable-orange?logo=rust)
 ![License](https://img.shields.io/badge/license-Apache%202.0-green)
 
-A single 8–10 MB binary (8.3 MB on macOS ARM64 as of v2.2.3). No runtime interpreter required. Real AST transformations. Under 10ms startup.
+A single 8-10 MB binary (8.3 MB on macOS ARM64 as of v2.2.3). No runtime interpreter required. Real AST transformations. Under 10ms startup.
 
 ## Installation
 
@@ -182,12 +182,12 @@ maintained, so do not install it.
 
 | Tool | Parameters | Description |
 |------|------------|-------------|
-| `promptguard_auth` | — | Check authentication; if missing, open the dashboard to get a key. Save it with `promptguard login`, never in the chat |
-| `promptguard_logout` | — | Clear local credentials |
+| `promptguard_auth` | - | Check authentication; if missing, open the dashboard to get a key. Save it with `promptguard login`, never in the chat |
+| `promptguard_logout` | - | Clear local credentials |
 | `promptguard_scan_text` | `text` (required), `content_type` (`prompt`, the default, or `response`) | Scan text for security threats; `response` scans a model's output instead of a prompt |
 | `promptguard_scan_project` | `directory`, `provider` (optional) | Scan codebase for unprotected LLM SDK usage |
 | `promptguard_redact` | `text` (required) | Redact PII from text (returns the redacted text only) |
-| `promptguard_status` | — | Show the configuration, key type and CLI version |
+| `promptguard_status` | - | Show the configuration, key type and CLI version |
 
 `promptguard_scan_text` and `promptguard_redact` each count as one Request on
 your plan. A tool rejects a parameter it does not declare, so a misspelt one is
@@ -516,7 +516,7 @@ providers; the rest use static transform mode.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `PROMPTGUARD_API_KEY` | — | API key (read by `init` and MCP tools) |
+| `PROMPTGUARD_API_KEY` | - | API key (read by `init` and MCP tools) |
 | `PROMPTGUARD_BASE_URL` | `https://api.promptguard.co/api/v1` | API base URL |
 
 Global credentials are stored in `~/.promptguard/credentials.json`. Project-level configuration is stored in `.promptguard.json` in the project root.
@@ -574,4 +574,4 @@ The full policy: [Versioning & support](https://docs.promptguard.co/versioning-a
 - [Homepage](https://promptguard.co)
 - [Dashboard](https://app.promptguard.co)
 
-Apache 2.0 — See [LICENSE](LICENSE)
+Apache 2.0, See [LICENSE](LICENSE)

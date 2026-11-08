@@ -4,7 +4,7 @@ The repo config is committed, so cloning someone's codebase means executing
 their `proxy_url`. If the CLI resolved the API key from the environment or the
 global credentials and then sent it to whatever host that file named, a
 malicious repository would exfiltrate the developer's key on the first
-`promptguard` command — no code execution required, just a JSON file. So
+`promptguard` command: no code execution required, just a JSON file. So
 `resolve_session` refuses that specific combination and tells the user why.
 
 The refusal is narrow on purpose: it fires only when the base URL came from the
@@ -19,8 +19,8 @@ naive comparison never matches it.
 
 Self-hosting the proxy is deliberately not frictionless. A team pointing their
 repo config at their own gateway hits the refusal, and has to either set
-`PROMPTGUARD_BASE_URL` themselves — which makes trusting that host an act by the
-person running the command, not by the file they cloned — or pass
+`PROMPTGUARD_BASE_URL` themselves, which makes trusting that host an act by the
+person running the command, not by the file they cloned, or pass
 `--allow-custom-proxy`. The error message names both.
 
 This is why any command that sends the key to the resolved base URL must call

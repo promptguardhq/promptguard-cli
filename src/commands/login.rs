@@ -16,7 +16,7 @@ impl LoginCommand {
             super::resolve_api_key_flag(key)?
         } else {
             Output::info("Log in to PromptGuard. Get your API key at https://app.promptguard.co");
-            Output::info("Note: input is not hidden — prefer 'promptguard login --api-key -' piped from a secret manager if others can see your terminal.");
+            Output::info("Note: input is not hidden, prefer 'promptguard login --api-key -' piped from a secret manager if others can see your terminal.");
             Output::input("API key")?
         };
 
@@ -35,7 +35,7 @@ impl LoginCommand {
         let client = PromptGuardClient::new(api_key.clone(), base_url.clone())?;
         match client.validate_credentials() {
             Ok(()) => Output::success("API key is valid"),
-            // Authentication failure (401/403): the key is bad. Reject it —
+            // Authentication failure (401/403): the key is bad. Reject it,
             // do NOT save and do NOT claim success.
             Err(PromptGuardError::Auth(msg)) => {
                 if self.json {
@@ -72,7 +72,7 @@ impl LoginCommand {
                 };
 
                 if !proceed {
-                    Output::info("Aborted — credentials were not saved.");
+                    Output::info("Aborted, credentials were not saved.");
                     return Ok(());
                 }
 
@@ -95,7 +95,7 @@ impl LoginCommand {
                     );
                 } else {
                     Output::warning(
-                        "Key saved unverified — run 'promptguard whoami' once your network is back.",
+                        "Key saved unverified: run 'promptguard whoami' once your network is back.",
                     );
                 }
                 return Ok(());

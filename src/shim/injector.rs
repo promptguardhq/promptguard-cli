@@ -29,7 +29,7 @@ const PYTHON_SHIM_LEGACY_LINES: &[&str] = &[
 /// The shim directory (`.promptguard`) is generated only at the project
 /// root, but entry points can be nested (e.g. `src/main.py`). The injected
 /// `sys.path` entry must therefore climb from the *entry file's* directory
-/// back up to the project root — one `'..'` component per directory level —
+/// back up to the project root, one `'..'` component per directory level,
 /// or the import fails with `ModuleNotFoundError` and the user's app crashes
 /// at startup.
 fn python_shim_import_block(depth: usize) -> String {
@@ -641,7 +641,7 @@ mod tests {
 
     /// HIGH regression: shims are generated only at the project root, but a
     /// nested entry point (e.g. src/app/main.py) used to get a sys.path entry
-    /// pointing at `<entry dir>/.promptguard`, which does not exist — the
+    /// pointing at `<entry dir>/.promptguard`, which does not exist, the
     /// user's app then crashed at startup with `ModuleNotFoundError`.
     #[test]
     fn test_nested_entry_point_sys_path_resolves_to_root_shim_dir() {

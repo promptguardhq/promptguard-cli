@@ -81,7 +81,7 @@ pub fn save_credentials(creds: &GlobalCredentials) -> Result<()> {
     let content = serde_json::to_string_pretty(creds)
         .map_err(|e| PromptGuardError::Config(format!("Failed to serialize credentials: {e}")))?;
 
-    // Created with mode 0600 atomically — no write-then-chmod window where
+    // Created with mode 0600 atomically, no write-then-chmod window where
     // the key is world-readable.
     crate::config::write_private_file(&path, &content)?;
 

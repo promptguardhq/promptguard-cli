@@ -33,7 +33,7 @@ impl VerifyCommand {
 
         // Same credential resolution as every other command (env var >
         // project config > global credentials), including the custom-proxy
-        // guard — verify previously used its own, reversed precedence.
+        // guard, verify previously used its own, reversed precedence.
         let (api_key, base_url) = resolve_session()?;
         let client = PromptGuardClient::new(api_key.clone(), Some(base_url.clone()))?;
 
@@ -135,7 +135,7 @@ impl VerifyCommand {
     /// 0 when everything passed, 2 when any check failed.
     fn report(&self, passed: u32, failed: u32) -> Result<i32> {
         if self.json {
-            // Pure JSON on stdout — no headers or human-readable chrome,
+            // Pure JSON on stdout, no headers or human-readable chrome,
             // so the output is machine-parseable in CI.
             let status = if failed > 0 { "fail" } else { "pass" };
             let result = serde_json::json!({
@@ -157,7 +157,7 @@ impl VerifyCommand {
         } else {
             println!();
             Output::success(&format!(
-                "All {passed} checks passed — PromptGuard is fully operational"
+                "All {passed} checks passed, PromptGuard is fully operational"
             ));
         }
         // Nonzero exit when any check failed so `verify` is usable as a CI

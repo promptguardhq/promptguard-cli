@@ -143,7 +143,7 @@ Examples:
         provider: Vec<String>,
 
         /// PromptGuard API key (or set PROMPTGUARD_API_KEY env var).
-        /// Use '-' to read the key from stdin — passing it as an argument
+        /// Use '-' to read the key from stdin, passing it as an argument
         /// exposes it in shell history and process listings.
         #[arg(long)]
         api_key: Option<String>,
@@ -381,13 +381,13 @@ Examples:
     Redteam {
         /// PromptGuard API base URL to run the tests against. Must be
         /// HTTPS and point at the PromptGuard API host (or localhost for
-        /// development) — the API key is sent with every request and is
+        /// development), the API key is sent with every request and is
         /// never sent to other hosts.
         #[arg(long)]
         target_url: Option<String>,
 
         /// PromptGuard API key (or uses configured key).
-        /// Use '-' to read the key from stdin — passing it as an argument
+        /// Use '-' to read the key from stdin, passing it as an argument
         /// exposes it in shell history and process listings.
         #[arg(long)]
         api_key: Option<String>,
@@ -435,7 +435,7 @@ Examples:
         project_id: Option<String>,
 
         /// PromptGuard API key (or uses configured key).
-        /// Use '-' to read the key from stdin — passing it as an argument
+        /// Use '-' to read the key from stdin, passing it as an argument
         /// exposes it in shell history and process listings.
         #[arg(long, global = true)]
         api_key: Option<String>,
@@ -522,7 +522,7 @@ Examples:
     /// commands and projects can use it without per-project setup.
     Login {
         /// API key to authenticate with (or enter interactively).
-        /// Use '-' to read the key from stdin — passing it as an argument
+        /// Use '-' to read the key from stdin, passing it as an argument
         /// exposes it in shell history and process listings.
         #[arg(long)]
         api_key: Option<String>,
@@ -1135,7 +1135,7 @@ mod tests {
     /// `policy --api-key -` must parse the same way.
     ///
     /// Also a regression test for a clap debug-assert panic: `project_id`
-    /// was marked required AND global, which clap forbids — every `policy`
+    /// was marked required AND global, which clap forbids, every `policy`
     /// invocation panicked in debug builds.
     #[test]
     fn policy_api_key_accepts_stdin_sentinel() {

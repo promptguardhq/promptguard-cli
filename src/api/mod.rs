@@ -298,7 +298,7 @@ impl PromptGuardClient {
     /// probe (`/health`) and therefore "succeeds" for any key, this calls the
     /// authenticated `GET /projects` endpoint. The backend rejects an invalid
     /// or deactivated key with 401/403, which `request` surfaces as
-    /// [`PromptGuardError::Auth`] — letting callers (e.g. `login`) distinguish
+    /// [`PromptGuardError::Auth`], letting callers (e.g. `login`) distinguish
     /// a bad key from a transient network problem.
     ///
     /// `GET /projects` is chosen because it is a lightweight, side-effect-free

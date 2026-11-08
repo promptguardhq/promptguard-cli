@@ -953,7 +953,7 @@ fn test_enable_yes_flag_does_not_block_on_stdin() {
 /// (deleting them afterwards), remove injected shim imports and the
 /// .promptguard/ directory, and only then remove the env entry and config.
 /// Regression: revert used to delete `PROMPTGUARD_API_KEY` and the config
-/// while leaving transformed files routed at the proxy — a broken app.
+/// while leaving transformed files routed at the proxy, a broken app.
 #[test]
 fn test_revert_restores_backups_and_removes_shims() {
     use promptguard::shim::{ShimGenerator, ShimInjector};
