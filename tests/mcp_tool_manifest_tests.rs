@@ -5,8 +5,9 @@
 //! `mcp-server/tool-definitions.json`, which the platform generates from its
 //! hosted MCP server. Its `shared_tools` belong to the platform and
 //! `cli_only_tools` to this repo; the platform's
-//! `scripts/utils/check_mcp_tool_manifest.py` compares the two files byte for
-//! byte. A tool both servers serve must look the same in both, so this test
+//! `scripts/utils/check_mcp_tool_manifest.py` compares those two sections, and
+//! this repo's `scripts/check_mcp_tool_manifest.py` (pre-push and `make ci`)
+//! compares the whole file byte for byte. A tool both servers serve must look the same in both, so this test
 //! fails when the CLI drifts from the manifest. To change a shared tool,
 //! change the hosted server, regenerate the platform manifest and copy it
 //! here; to change a CLI-only tool, change `src/commands/mcp.rs` and its

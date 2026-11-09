@@ -20,6 +20,9 @@ cd "$(git rev-parse --show-toplevel)"
 # Agent files load and resolve, and no em or en dashes: the same step as CI.
 python3 scripts/check_agent_files.py --check
 python3 scripts/check_no_dashes.py --check
+# The MCP tool manifest copy is the platform's, byte for byte: compared with a
+# sibling platform checkout, which CI does not have (scripts/check_mcp_tool_manifest.py).
+python3 scripts/check_mcp_tool_manifest.py --check
 
 # A missing scanner fails the push: a gate that passes when its tool is absent
 # looks exactly like a clean scan. One-off override, written down per push:

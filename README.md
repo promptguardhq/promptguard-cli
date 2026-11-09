@@ -196,7 +196,10 @@ reported rather than ignored.
 The three tools the hosted server also serves (`scan_text`, `redact`, `status`)
 have the same title, description, parameters and annotations in both:
 `tests/mcp-tool-definitions.json` is a copy of the platform's published tool
-manifest, and a test fails if the CLI drifts from it.
+manifest, and a test fails if the CLI drifts from it. `make ci` and the
+pre-push hook fail when the copy is not byte-identical to the platform's
+(`scripts/check_mcp_tool_manifest.py`, which needs a platform checkout beside
+this one).
 
 The server speaks MCP revisions 2026-07-28, 2025-11-25, 2025-06-18, 2025-03-26
 and 2024-11-05. A 2026-07-28 client needs no handshake: each request names

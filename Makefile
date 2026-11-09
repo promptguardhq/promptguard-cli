@@ -97,6 +97,8 @@ fmt-check:
 ci:
 	@echo "🚀 Running full CI checks locally..."
 	@echo ""
+	@python3 scripts/check_mcp_tool_manifest.py --check
+	@echo ""
 	@$(MAKE) fmt-check
 	@echo ""
 	@$(MAKE) lint

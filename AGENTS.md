@@ -33,7 +33,8 @@ git config core.hooksPath .githooks
 git config promptguard.pushGate true    # optional: also run `make ci` on push
 ```
 
-`.githooks/pre-push` runs the agent-file and dash checks, then scans the commits
+`.githooks/pre-push` runs the agent-file and dash checks and the MCP tool
+manifest copy check (`scripts/check_mcp_tool_manifest.py`), then scans the commits
 you are pushing for secrets (a missing gitleaks fails the push). The scan is
 scoped to that range on purpose: this repo is public, so a credential on `main`
 is world-readable at once, while scanning the whole tree or the history fails on
