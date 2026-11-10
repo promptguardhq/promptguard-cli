@@ -537,14 +537,23 @@ cargo test               # Run tests
 ```
 src/
 ├── main.rs              # CLI entry point (Clap)
-├── scanner/             # Recursive file scanning
-├── detector/            # AST-based SDK detection (Tree-sitter)
-├── transformer/         # AST-based code transformation
-├── config/              # JSON configuration (Serde)
-├── backup/              # Backup/restore system
+├── lib.rs               # Public library interface
+├── analyzer/            # Environment-variable usage analysis (EnvScanner)
 ├── api/                 # HTTP API client (Reqwest)
+├── auth/                # Global credentials (~/.promptguard/credentials.json)
+├── backup/              # Backup/restore system
+├── commands/            # CLI commands (init, scan, mcp, redteam, policy)
+├── config/              # JSON configuration (Serde)
+├── detector/            # AST-based SDK detection (Tree-sitter)
+├── env/                 # .env file updates (EnvManager)
+├── error.rs             # Error types (thiserror)
 ├── local_rules/         # Regex rule pack for `scan --offline` (generated)
-└── commands/            # CLI commands (init, scan, mcp, redteam, policy)
+├── output/              # Terminal output helpers
+├── scanner/             # Recursive file scanning
+├── shim/                # Runtime shim generation and injection
+├── text.rs              # Line-ending-preserving text helpers
+├── transformer/         # AST-based code transformation
+└── types.rs             # Shared types (Language, Provider, detected usage)
 ```
 
 ## Uninstallation
