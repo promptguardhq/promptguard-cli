@@ -13,7 +13,13 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-11-10
+
 ### Changed
+
+- **Messages use plain punctuation.** Warnings, hints and generated shim
+  comments that used an em or en dash now use a comma or colon instead. The
+  wording is otherwise unchanged.
 
 - **The MCP tool manifest copy is refreshed, and held to the platform's.**
   `tests/mcp-tool-definitions.json` now lists the hosted server's Read-stage

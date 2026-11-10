@@ -17,7 +17,7 @@ A single 8-10 MB binary (8.3 MB on macOS ARM64 as of v2.2.3). No runtime interpr
 |--------|---------|
 | **Shell script** (macOS, Linux x86_64) | `curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/install.sh \| sh` |
 | **Binary** | Download from [GitHub Releases](https://github.com/promptguardhq/promptguard-cli/releases/latest) |
-| **Cargo** (build from source) | `cargo install --locked --git https://github.com/promptguardhq/promptguard-cli --tag cli-v2.4.0` |
+| **Cargo** (build from source) | `cargo install --locked --git https://github.com/promptguardhq/promptguard-cli --tag cli-v2.4.1` |
 
 Every release publishes these prebuilt binaries, each with a `.sha256` checksum
 beside it (the shell script verifies it before installing):
