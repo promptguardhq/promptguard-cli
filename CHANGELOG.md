@@ -13,6 +13,8 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-13
+
 ### Added
 
 - **The local MCP server's `promptguard_redact` takes `pii_types`, as the
