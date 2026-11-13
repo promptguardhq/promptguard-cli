@@ -265,13 +265,27 @@ fn scan_output_schema() -> serde_json::Value {
 }
 
 fn redact_output_schema() -> serde_json::Value {
+    // `skipped` is the `/security/redact` response's, item schema
+    // `SkippedMatch` (backend `shared/schemas/redaction.py`): the matches a
+    // detector found and deliberately left in the text.
     serde_json::json!({
         "type": "object",
         "properties": {
             "redacted": {"type": "string"},
-            "piiFound": {"type": "array", "items": {"type": "string"}}
+            "piiFound": {"type": "array", "items": {"type": "string"}},
+            "skipped": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string"},
+                        "reason": {"type": "string"}
+                    },
+                    "required": ["type", "reason"]
+                }
+            }
         },
-        "required": ["redacted", "piiFound"]
+        "required": ["redacted", "piiFound", "skipped"]
     })
 }
 
@@ -424,13 +438,21 @@ fn tool_definitions() -> serde_json::Value {
             {
                 "name": "promptguard_redact",
                 "title": "Redact PII",
-                "description": "Redact PII (emails, phone numbers, SSNs, credit cards, API keys) from text. Returns sanitized text with each entity replaced by a labeled placeholder, e.g. [EMAIL_REDACTED], [PHONE_REDACTED], [SSN_REDACTED], and the PII types found. Never returns the original text. Each call counts as one Request on your PromptGuard plan.\nWhen to use: Before including user data in LLM prompts, when processing customer messages, or when building RAG pipelines that ingest documents containing personal information.",
+                "description": "Redact PII from text. Returns the text with each entity replaced by a labeled placeholder, e.g. [EMAIL_REDACTED], [PHONE_REDACTED], [SSN_REDACTED], the PII types found, and `skipped`: the matches deliberately left in the text. Never returns the original text. Each call counts as one Request on your PromptGuard plan.\nWithout `pii_types` it redacts what the Project's policy redacts; a default Project redacts emails, phone numbers, SSNs, payment cards, bank and national identifiers, IP addresses and API keys. Pass `pii_types` to redact only the types you name. An email at a domain reserved for documentation and testing (example.com, .test, .invalid, localhost) is never redacted, since it cannot be a person's address: it comes back in `skipped` with the reason `reserved_domain`, so test with a real-looking domain.\nWhen to use: Before including user data in LLM prompts, when processing customer messages, or when building RAG pipelines that ingest documents containing personal information.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "text": {
                             "type": "string",
                             "description": "The text content to redact PII from"
+                        },
+                        "pii_types": {
+                            "anyOf": [
+                                {"type": "array", "items": {"type": "string"}},
+                                {"type": "null"}
+                            ],
+                            "default": null,
+                            "description": "PII types to redact, the REST API's vocabulary: detector entity names ('email', 'ssn', 'credit_card', 'phone_us'), the family aliases 'phone', 'ip_address' and 'passport', and 'api_key'. Omit to redact what the Project's policy redacts. An unrecognized name is refused with the code 'unknown_pii_type' rather than ignored."
                         }
                     },
                     "required": ["text"],
@@ -565,7 +587,7 @@ fn handle_scan_text(params: &serde_json::Value) -> serde_json::Value {
         serde_json::json!({ "content": text, "type": content_type }),
     ) {
         Ok(response) => tool_ok(&response),
-        Err(e) => tool_error(&format!("Error: {e}")),
+        Err(e) => tool_api_error(e),
     }
 }
 
@@ -651,28 +673,80 @@ fn handle_scan_project(params: &serde_json::Value) -> serde_json::Value {
     }))
 }
 
+/// The `pii_types` argument: `None` when omitted or null, which leaves the
+/// choice to the Project's policy, else the names, forwarded as given. The API
+/// owns the vocabulary and refuses a name it does not know.
+fn pii_types(
+    params: &serde_json::Value,
+) -> std::result::Result<Option<serde_json::Value>, serde_json::Value> {
+    match params.get("pii_types") {
+        None | Some(serde_json::Value::Null) => Ok(None),
+        Some(names @ serde_json::Value::Array(items))
+            if items.iter().all(serde_json::Value::is_string) =>
+        {
+            Ok(Some(names.clone()))
+        },
+        Some(other) => Err(tool_error(&format!(
+            "Error: 'pii_types' must be a list of PII type names, got {other}"
+        ))),
+    }
+}
+
+/// A failed API call as a tool error the model can act on. A refusal in the
+/// API's error envelope keeps its code, as the hosted server's error result
+/// (`{"kind": "error", "error", "code"}`), so a client branches on `code`
+/// (`unknown_pii_type`) the same way against either server.
+fn tool_api_error(error: PromptGuardError) -> serde_json::Value {
+    match error {
+        PromptGuardError::ApiRefused { code, message, .. } => {
+            let mut result = tool_ok(&serde_json::json!({
+                "kind": "error",
+                "error": message,
+                "code": code,
+            }));
+            result["isError"] = serde_json::Value::Bool(true);
+            result
+        },
+        other => tool_error(&format!("Error: {other}")),
+    }
+}
+
 fn handle_redact(params: &serde_json::Value) -> serde_json::Value {
     let text = match required_text(params) {
         Ok(t) => t,
         Err(e) => return e,
     };
-    match post_with_session("/security/redact", serde_json::json!({ "content": text })) {
+    let mut body = serde_json::json!({ "content": text });
+    match pii_types(params) {
+        Ok(Some(names)) => body["pii_types"] = names,
+        Ok(None) => {},
+        Err(e) => return e,
+    }
+    match post_with_session("/security/redact", body) {
         // The API echoes the un-redacted input back as `original`. A tool
         // result goes into the model's context and the client's transcript,
         // so returning it would re-introduce the very PII this tool removes.
         // The hosted server drops it for the same reason.
         Ok(response) => match response.get("redacted").and_then(serde_json::Value::as_str) {
-            Some(redacted) => tool_ok(&serde_json::json!({
-                "redacted": redacted,
-                "piiFound": response
-                    .get("piiFound")
-                    .filter(|v| v.is_array())
-                    .cloned()
-                    .unwrap_or_else(|| serde_json::json!([])),
-            })),
+            Some(redacted) => {
+                let list = |field: &str| {
+                    response
+                        .get(field)
+                        .filter(|v| v.is_array())
+                        .cloned()
+                        .unwrap_or_else(|| serde_json::json!([]))
+                };
+                // An API from before `skipped` sends none: it skipped nothing
+                // it could report, so the result still carries the field.
+                tool_ok(&serde_json::json!({
+                    "redacted": redacted,
+                    "piiFound": list("piiFound"),
+                    "skipped": list("skipped"),
+                }))
+            },
             None => tool_error("Error: the PromptGuard API returned no redacted text"),
         },
-        Err(e) => tool_error(&format!("Error: {e}")),
+        Err(e) => tool_api_error(e),
     }
 }
 

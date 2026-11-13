@@ -35,6 +35,16 @@ pub enum PromptGuardError {
     #[error("API error: {0}")]
     Api(String),
 
+    /// The API refused the request in its error envelope. It reads as the
+    /// `Api` error always did, and keeps the envelope's `code` for a caller
+    /// that hands the refusal on intact: the MCP server's tool errors.
+    #[error("API error: API error ({status}): {message}")]
+    ApiRefused {
+        status: String,
+        code: String,
+        message: String,
+    },
+
     #[error("{}", .0.message)]
     QuotaExceeded(Box<QuotaExceededInfo>),
 
@@ -78,7 +88,7 @@ impl PromptGuardError {
             Self::Json(_) => "json",
             Self::Parse(_) => "parse",
             Self::Config(_) => "config",
-            Self::Api(_) => "api",
+            Self::Api(_) | Self::ApiRefused { .. } => "api",
             Self::QuotaExceeded(_) => "quota_exceeded",
             Self::NotInitialized => "not_initialized",
             Self::NoCredentials => "no_credentials",

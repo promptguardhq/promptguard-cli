@@ -13,6 +13,24 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+### Added
+
+- **The local MCP server's `promptguard_redact` takes `pii_types`, as the
+  hosted tool does.** Name the PII types to redact in the REST API's
+  vocabulary (detector names such as `email` or `phone_us`, the aliases
+  `phone`, `ip_address` and `passport`, and `api_key`); omit it and the
+  Project's policy decides, as before. An unknown name is a tool error whose
+  structured content is `{"kind": "error", "error": ..., "code":
+  "unknown_pii_type"}`, the hosted server's shape, and nothing is redacted or
+  counted. The tool's description and parameters are the hosted tool's again.
+
+- **`promptguard_redact` results carry `skipped`.** It lists the matches the
+  API deliberately left in the text, such as an email at a domain reserved
+  for documentation and testing (`example.com`, `.test`), with the reason
+  `reserved_domain`. It is `[]` when nothing was skipped. An API from before
+  the field sends none, and the tool then answers `[]` too, although that API
+  may still have left a reserved-domain email in the text.
+
 ## [2.4.1] - 2026-11-10
 
 ### Changed
