@@ -33,6 +33,14 @@ survives three releases is a changelog nobody is maintaining.
   the field sends none, and the tool then answers `[]` too, although that API
   may still have left a reserved-domain email in the text.
 
+### Security
+
+- **The lockfile moves `quinn-udp` to 0.5.16 (RUSTSEC-2026-0538) and `rustix`
+  to 1.1.6 (RUSTSEC-2026-0486).** Neither was in the shipped binary:
+  `quinn-udp` belongs to the HTTP client's HTTP/3 support, which the CLI does
+  not enable, and `rustix` only to the test suite. The update keeps
+  `cargo audit` clean.
+
 ## [2.4.1] - 2026-11-10
 
 ### Changed
