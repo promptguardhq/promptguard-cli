@@ -323,8 +323,7 @@ fn answer_endpoint(
             let mut answer = normal(body);
             let names: Vec<Value> = body["tools"]
                 .as_array()
-                .map(|t| t.iter().map(|t| t["name"].clone()).collect())
-                .unwrap_or_default();
+                .map_or_else(Vec::new, |t| t.iter().map(|t| t["name"].clone()).collect());
             answer["incomplete"] = json!(!names.is_empty());
             answer["unscanned_tools"] = Value::Array(names);
             respond(stream, 200, &answer.to_string());
