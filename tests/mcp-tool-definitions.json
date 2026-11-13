@@ -37,13 +37,28 @@
     {
       "name": "promptguard_redact",
       "title": "Redact PII",
-      "description": "Redact PII (emails, phone numbers, SSNs, credit cards, API keys) from text. Returns sanitized text with each entity replaced by a labeled placeholder, e.g. [EMAIL_REDACTED], [PHONE_REDACTED], [SSN_REDACTED], and the PII types found. Never returns the original text. Each call counts as one Request on your PromptGuard plan.\nWhen to use: Before including user data in LLM prompts, when processing customer messages, or when building RAG pipelines that ingest documents containing personal information.",
+      "description": "Redact PII from text. Returns the text with each entity replaced by a labeled placeholder, e.g. [EMAIL_REDACTED], [PHONE_REDACTED], [SSN_REDACTED], the PII types found, and `skipped`: the matches deliberately left in the text. Never returns the original text. Each call counts as one Request on your PromptGuard plan.\nWithout `pii_types` it redacts what the Project's policy redacts; a default Project redacts emails, phone numbers, SSNs, payment cards, bank and national identifiers, IP addresses and API keys. Pass `pii_types` to redact only the types you name. An email at a domain reserved for documentation and testing (example.com, .test, .invalid, localhost) is never redacted, since it cannot be a person's address: it comes back in `skipped` with the reason `reserved_domain`, so test with a real-looking domain.\nWhen to use: Before including user data in LLM prompts, when processing customer messages, or when building RAG pipelines that ingest documents containing personal information.",
       "inputSchema": {
         "additionalProperties": false,
         "properties": {
           "text": {
             "description": "The text content to redact PII from",
             "type": "string"
+          },
+          "pii_types": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "PII types to redact, the REST API's vocabulary: detector entity names ('email', 'ssn', 'credit_card', 'phone_us'), the family aliases 'phone', 'ip_address' and 'passport', and 'api_key'. Omit to redact what the Project's policy redacts. An unrecognized name is refused with the code 'unknown_pii_type' rather than ignored."
           }
         },
         "required": [

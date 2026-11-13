@@ -17,7 +17,7 @@ A single 8-10 MB binary (8.3 MB on macOS ARM64 as of v2.2.3). No runtime interpr
 |--------|---------|
 | **Shell script** (macOS, Linux x86_64) | `curl -fsSL https://raw.githubusercontent.com/promptguardhq/promptguard-cli/main/install.sh \| sh` |
 | **Binary** | Download from [GitHub Releases](https://github.com/promptguardhq/promptguard-cli/releases/latest) |
-| **Cargo** (build from source) | `cargo install --locked --git https://github.com/promptguardhq/promptguard-cli --tag cli-v2.4.1` |
+| **Cargo** (build from source) | `cargo install --locked --git https://github.com/promptguardhq/promptguard-cli --tag cli-v2.5.0` |
 
 Every release publishes these prebuilt binaries, each with a `.sha256` checksum
 beside it (the shell script verifies it before installing):
@@ -186,7 +186,7 @@ maintained, so do not install it.
 | `promptguard_logout` | - | Clear local credentials |
 | `promptguard_scan_text` | `text` (required), `content_type` (`prompt`, the default, or `response`) | Scan text for security threats; `response` scans a model's output instead of a prompt |
 | `promptguard_scan_project` | `directory`, `provider` (optional) | Scan codebase for unprotected LLM SDK usage |
-| `promptguard_redact` | `text` (required) | Redact PII from text (returns the redacted text only) |
+| `promptguard_redact` | `text` (required), `pii_types` (optional) | Redact PII from text: the Project policy's types, or only the `pii_types` named. Returns the redacted text, never the original, and `skipped`: matches left in on purpose, such as an email at a reserved domain like `example.com` |
 | `promptguard_status` | - | Show the configuration, key type and CLI version |
 
 `promptguard_scan_text` and `promptguard_redact` each count as one Request on

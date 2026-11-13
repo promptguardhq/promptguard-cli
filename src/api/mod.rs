@@ -245,10 +245,11 @@ impl PromptGuardClient {
                             )));
                         }
 
-                        return Err(PromptGuardError::Api(format!(
-                            "API error ({}): {}",
-                            status, detail.message
-                        )));
+                        return Err(PromptGuardError::ApiRefused {
+                            status: status.to_string(),
+                            code: detail.code,
+                            message: detail.message,
+                        });
                     }
 
                     if is_auth_error {

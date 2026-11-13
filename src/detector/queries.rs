@@ -226,9 +226,7 @@ pub fn get_python_detection_query(provider: Provider) -> String {
             ]
         "#
         .to_string(),
-        _ => ProviderInfo::get(provider)
-            .map(standard_python_detection_query)
-            .unwrap_or_default(),
+        _ => ProviderInfo::get(provider).map_or_else(String::new, standard_python_detection_query),
     }
 }
 
@@ -250,8 +248,6 @@ pub fn get_python_transform_query(provider: Provider) -> String {
         //    boto3.client() accepts neither api_key= nor base_url=, injecting
         //    them raised TypeError at runtime.
         Provider::Gemini | Provider::Bedrock => String::new(),
-        _ => ProviderInfo::get(provider)
-            .map(standard_python_transform_query)
-            .unwrap_or_default(),
+        _ => ProviderInfo::get(provider).map_or_else(String::new, standard_python_transform_query),
     }
 }

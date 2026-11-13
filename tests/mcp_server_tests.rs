@@ -56,35 +56,76 @@ fn fake_api() -> String {
             let content = body["content"].as_str().unwrap_or_default().to_string();
 
             let answer = if request_line.contains("/security/scan") {
-                json!({
-                    "blocked": content.contains("ignore previous"),
-                    "decision": if content.contains("ignore previous") { "block" } else { "allow" },
-                    "confidence": 0.97,
-                    // Echo the scan type, so a test can see what was sent.
-                    "reason": format!("test verdict for {}", body["type"].as_str().unwrap_or("<none>")),
-                    "threatType": null,
-                    "flagged": false,
-                    "eventId": "evt_test",
-                    "processingTimeMs": 1.5
-                })
+                (
+                    200,
+                    json!({
+                        "blocked": content.contains("ignore previous"),
+                        "decision": if content.contains("ignore previous") { "block" } else { "allow" },
+                        "confidence": 0.97,
+                        // Echo the scan type, so a test can see what was sent.
+                        "reason": format!("test verdict for {}", body["type"].as_str().unwrap_or("<none>")),
+                        "threatType": null,
+                        "flagged": false,
+                        "eventId": "evt_test",
+                        "processingTimeMs": 1.5
+                    }),
+                )
             } else if request_line.contains("/security/redact") {
-                json!({
-                    "original": content,
-                    "redacted": content.replace("jane@example.com", "[EMAIL_REDACTED]"),
-                    "piiFound": ["email"]
-                })
+                redact_answer(&body, &content)
             } else {
-                json!({"error": "not found"})
+                (404, json!({"error": "not found"}))
             };
+            let (status, answer) = answer;
             let payload = answer.to_string();
+            let reason = if status == 200 { "OK" } else { "Error" };
             let response = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
+                "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{payload}",
                 payload.len()
             );
             let _ = stream.write_all(response.as_bytes());
         }
     });
     format!("http://{addr}/api/v1")
+}
+
+/// `POST /security/redact`, as `developer/security/router.py` answers it.
+///
+/// `piiFound` reports the `pii_types` the request carried (`["<omitted>"]`
+/// when it carried none), so a test can see what the server forwarded. An
+/// email at a reserved domain (`.test`) comes back in `skipped`; text
+/// containing "older api" gets an answer from before `skipped` existed.
+fn redact_answer(body: &Value, content: &str) -> (u16, Value) {
+    let requested = body.get("pii_types");
+    if let Some(unknown) = requested
+        .and_then(Value::as_array)
+        .and_then(|types| types.iter().find(|t| *t == "e-mail"))
+    {
+        return (
+            400,
+            json!({"error": {
+                "message": format!(
+                    "Unknown pii_types: ['{}']. Supported: ['api_key', 'email']",
+                    unknown.as_str().unwrap()
+                ),
+                "type": "invalid_request_error",
+                "code": "unknown_pii_type"
+            }}),
+        );
+    }
+    let mut answer = json!({
+        "original": content,
+        "redacted": content.replace("jane@example.com", "[EMAIL_REDACTED]"),
+        "piiFound": requested.cloned().unwrap_or_else(|| json!(["<omitted>"])),
+        "skipped": if content.contains("@demo.test") {
+            json!([{"type": "email", "reason": "reserved_domain"}])
+        } else {
+            json!([])
+        }
+    });
+    if content.contains("older api") {
+        answer.as_object_mut().unwrap().remove("skipped");
+    }
+    (200, answer)
 }
 
 // ---------------------------------------------------------------------------
@@ -655,6 +696,121 @@ fn redact_never_returns_the_original_text() {
         !result.to_string().contains("jane@example.com"),
         "the un-redacted input came back: {result}"
     );
+}
+
+fn redact_with(arguments: Value) -> (TempDir, Value) {
+    let home = TempDir::new().unwrap();
+    let base = fake_api();
+    let result = session(
+        home.path(),
+        &[
+            ("PROMPTGUARD_API_KEY", KEY),
+            ("PROMPTGUARD_BASE_URL", &base),
+        ],
+        &[call(1, "promptguard_redact", arguments)],
+    )[0]["result"]
+        .clone();
+    (home, result)
+}
+
+#[test]
+fn redact_lists_pii_types_and_skipped_in_its_schemas() {
+    let home = TempDir::new().unwrap();
+    let redact = tools(home.path())
+        .into_iter()
+        .find(|t| t["name"] == "promptguard_redact")
+        .unwrap();
+    let pii_types = &redact["inputSchema"]["properties"]["pii_types"];
+    assert_eq!(pii_types["default"], Value::Null, "{redact}");
+    assert_eq!(redact["inputSchema"]["required"], json!(["text"]));
+    assert!(redact["description"]
+        .as_str()
+        .unwrap()
+        .contains("reserved_domain"));
+    let output = &redact["outputSchema"];
+    assert!(
+        output["required"]
+            .as_array()
+            .unwrap()
+            .contains(&json!("skipped")),
+        "{output}"
+    );
+    assert_eq!(
+        output["properties"]["skipped"]["items"]["required"],
+        json!(["type", "reason"])
+    );
+}
+
+#[test]
+fn redact_without_pii_types_leaves_the_choice_to_the_project_policy() {
+    for arguments in [
+        json!({"text": "mail jane@example.com"}),
+        json!({"text": "mail jane@example.com", "pii_types": null}),
+    ] {
+        let (home, result) = redact_with(arguments.clone());
+        let redacted = assert_structured(home.path(), "promptguard_redact", &result);
+        assert_eq!(redacted["piiFound"], json!(["<omitted>"]), "{arguments}");
+    }
+}
+
+#[test]
+fn redact_forwards_the_pii_types_it_is_given() {
+    let (home, result) =
+        redact_with(json!({"text": "ssn 123-45-6789", "pii_types": ["ssn", "api_key"]}));
+    let redacted = assert_structured(home.path(), "promptguard_redact", &result);
+    assert_eq!(redacted["piiFound"], json!(["ssn", "api_key"]));
+}
+
+#[test]
+fn redact_reports_what_the_api_skipped() {
+    let (home, result) = redact_with(json!({"text": "mail dev@demo.test"}));
+    let redacted = assert_structured(home.path(), "promptguard_redact", &result);
+    assert_eq!(
+        redacted["skipped"],
+        json!([{"type": "email", "reason": "reserved_domain"}])
+    );
+    let (home, result) = redact_with(json!({"text": "mail jane@example.com"}));
+    let redacted = assert_structured(home.path(), "promptguard_redact", &result);
+    assert_eq!(redacted["skipped"], json!([]));
+}
+
+#[test]
+fn redact_answers_skipped_even_from_an_api_that_predates_it() {
+    let (home, result) = redact_with(json!({"text": "older api"}));
+    let redacted = assert_structured(home.path(), "promptguard_redact", &result);
+    assert_eq!(redacted["skipped"], json!([]));
+}
+
+#[test]
+fn redact_refuses_an_unknown_pii_type_with_the_hosted_error() {
+    let (_home, result) =
+        redact_with(json!({"text": "mail jane@example.com", "pii_types": ["e-mail"]}));
+    assert_eq!(result["isError"], json!(true), "{result}");
+    let error = &result["structuredContent"];
+    assert_eq!(error["kind"], "error", "{result}");
+    assert_eq!(error["code"], "unknown_pii_type");
+    let message = error["error"].as_str().unwrap();
+    assert!(
+        message.starts_with("Unknown pii_types: ['e-mail']"),
+        "{message}"
+    );
+    let text: Value = serde_json::from_str(result["content"][0]["text"].as_str().unwrap()).unwrap();
+    assert_eq!(&text, error, "text and structuredContent disagree");
+}
+
+#[test]
+fn redact_rejects_pii_types_that_are_not_a_list_of_names() {
+    for bad in [json!("email"), json!([1]), json!({"email": true})] {
+        let (_home, result) = redact_with(json!({"text": "hello", "pii_types": bad}));
+        assert_eq!(result["isError"], json!(true), "{bad}: {result}");
+        assert!(
+            result["content"][0]["text"]
+                .as_str()
+                .unwrap()
+                .contains("pii_types"),
+            "{result}"
+        );
+    }
 }
 
 #[test]
