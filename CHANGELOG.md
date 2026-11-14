@@ -13,6 +13,8 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-11-14
+
 ### Fixed
 
 - **`promptguard verify` no longer fails against a healthy API.** Its
