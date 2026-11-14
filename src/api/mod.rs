@@ -16,6 +16,14 @@ const CONNECT_TIMEOUT_SECS: u64 = 10;
 /// Request timeout in seconds
 const REQUEST_TIMEOUT_SECS: u64 = 30;
 
+/// The host-level root of an API base URL: the base without its trailing
+/// `/api/v1`, where root routes such as `/health` are served. A base without
+/// that suffix (a proxy that mounts the API elsewhere) is returned as is.
+fn api_root(base_url: &str) -> &str {
+    let base = base_url.trim_end_matches('/');
+    base.strip_suffix("/api/v1").unwrap_or(base)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ErrorResponse {
     error: ErrorDetail,
@@ -287,9 +295,23 @@ impl PromptGuardClient {
 
     // Health Check
 
+    /// Probe the API's `/health` route, which is served at the host root, not
+    /// under the versioned API: `{base_url}/health` would ask for
+    /// `/api/v1/health`, which does not exist, and report a reachable API as
+    /// unreachable.
     pub fn health_check(&self) -> Result<()> {
-        let _: serde_json::Value = self.request(&reqwest::Method::GET, "/health", None)?;
-
+        let url = format!("{}/health", api_root(&self.base_url));
+        let response = self
+            .authenticated(&reqwest::Method::GET, &url)
+            .send()
+            .map_err(|e| PromptGuardError::Api(format!("Request failed: {e}")))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(PromptGuardError::Api(format!(
+                "GET {url} answered {}",
+                status.as_u16()
+            )));
+        }
         Ok(())
     }
 

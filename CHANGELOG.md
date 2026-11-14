@@ -13,6 +13,17 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`promptguard verify` no longer fails against a healthy API.** Its
+  connectivity check asked for `/api/v1/health`, which the API does not serve
+  (`/health` is at the host root), so `verify` reported `API unreachable`
+  with a working key and exited `2`, and `whoami` and `test` said the API was
+  unreachable. CI jobs gated on `verify --json`, as the docs' GitHub Actions
+  example is, failed on every run. The check now probes `/health` at the host
+  root of your base URL; a base URL that does not end in `/api/v1` is probed
+  as given.
+
 ## [2.5.0] - 2026-11-13
 
 ### Added
