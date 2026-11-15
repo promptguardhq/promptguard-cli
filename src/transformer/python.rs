@@ -1,5 +1,5 @@
 use super::core::transform_file_generic;
-use crate::detector::{python_args_have_base_url, Grammar};
+use crate::detector::{python_args_have_base_url, Grammar, ProviderInfo};
 use crate::transformer::Transformer;
 use crate::types::{Provider, TransformResult};
 use std::fmt::Write;
@@ -24,16 +24,40 @@ fn has_base_url(source: &str, args_node: tree_sitter::Node) -> bool {
     python_args_have_base_url(args_text)
 }
 
+/// Whether the argument list has a keyword argument `name=…`.
+fn args_have_keyword(source: &str, args_node: tree_sitter::Node, name: &str) -> bool {
+    let mut cursor = args_node.walk();
+    for child in args_node.named_children(&mut cursor) {
+        if child.kind() == "keyword_argument" {
+            if let Some(key) = child.child_by_field_name("name") {
+                if &source[key.start_byte()..key.end_byte()] == name {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// The two keyword arguments every rewrite adds: the proxy URL, and the
+/// header that authenticates to it (the proxy reads the PromptGuard key only
+/// from `X-API-Key`). The provider key stays in the SDK's own `api_key` (or
+/// its environment default), which the proxy forwards to the provider.
+fn write_proxy_args(out: &mut String, headers_param: &str, proxy_url: &str, api_key_env_var: &str) {
+    let _ = writeln!(out, "    base_url=\"{proxy_url}\",");
+    let _ = writeln!(
+        out,
+        "    {headers_param}={{\"X-API-Key\": os.environ.get(\"{api_key_env_var}\")}}"
+    );
+}
+
 fn transform_args(
     source: &str,
     args_node: tree_sitter::Node,
+    headers_param: &str,
     proxy_url: &str,
     api_key_env_var: &str,
-) -> Option<String> {
-    if has_base_url(source, args_node) {
-        return None;
-    }
-
+) -> String {
     let args_text = &source[args_node.start_byte()..args_node.end_byte()];
     // Strip exactly ONE outer `(` / `)`: the delimiters of this
     // `argument_list` node. `trim_end_matches(')')` stripped *every* trailing
@@ -73,16 +97,13 @@ fn transform_args(
                 new_args.push_str(tail);
             }
             new_args.push('\n');
-            let _ = writeln!(new_args, "    base_url=\"{proxy_url}\"");
+            write_proxy_args(&mut new_args, headers_param, proxy_url, api_key_env_var);
         },
         _ => {
-            // No arguments: inject both the api_key and the proxy URL. Keep
-            // any comment-only content after the injected arguments.
-            let _ = writeln!(
-                new_args,
-                "    api_key=os.environ.get(\"{api_key_env_var}\"),"
-            );
-            let _ = writeln!(new_args, "    base_url=\"{proxy_url}\"");
+            // No arguments. The SDK keeps reading the provider key from its
+            // own environment variable. Keep any comment-only content after
+            // the injected arguments.
+            write_proxy_args(&mut new_args, headers_param, proxy_url, api_key_env_var);
             let comments = inner.trim();
             if !comments.is_empty() {
                 let _ = writeln!(new_args, "    {comments}");
@@ -91,7 +112,7 @@ fn transform_args(
     }
 
     new_args.push(')');
-    Some(new_args)
+    new_args
 }
 
 /// Whether the argument list forwards dynamic arguments via a splat
@@ -198,12 +219,24 @@ impl Transformer for PythonTransformer {
             Grammar::Python,
             provider,
             |source, args_node| {
-                if !has_base_url(source, args_node) && args_have_splat(args_node) {
+                if has_base_url(source, args_node) {
+                    return None;
+                }
+                let headers_param = ProviderInfo::get(provider).map_or("", |i| i.py_headers_param);
+                // Manual routing when the transformer cannot know what a
+                // splat expands to, when the SDK has no header argument (a
+                // base URL alone gets 401 from the proxy), or when the call
+                // already sets headers (a second keyword is a SyntaxError).
+                if args_have_splat(args_node)
+                    || headers_param.is_empty()
+                    || args_have_keyword(source, args_node, headers_param)
+                {
                     manual_skips.set(manual_skips.get() + 1);
                     return None;
                 }
-                transform_args(source, args_node, proxy_url, api_key_env_var)
-                    .map(|new_args| (args_node.start_byte(), args_node.end_byte(), new_args))
+                let new_args =
+                    transform_args(source, args_node, headers_param, proxy_url, api_key_env_var);
+                Some((args_node.start_byte(), args_node.end_byte(), new_args))
             },
             ensure_os_import,
             dry_run,
@@ -450,11 +483,13 @@ mod tests {
         );
     }
 
-    /// Cohere IS transformable: `cohere.Client` / `cohere.ClientV2` both accept
-    /// a valid `base_url=` kwarg. The real classes are `cohere.Client` and
-    /// `cohere.ClientV2` (there is NO `CohereClient`), matched module-qualified.
+    /// The real classes are `cohere.Client` and `cohere.ClientV2` (there is
+    /// NO `CohereClient`), matched module-qualified. Both take `base_url=`
+    /// but no header argument, so they cannot carry `X-API-Key`.
     #[test]
-    fn cohere_client_and_clientv2_are_transformed() {
+    fn cohere_client_and_clientv2_are_reported_for_manual_routing() {
+        // Neither class takes a header argument, so a rewrite could only add
+        // a base URL, which the proxy refuses without `X-API-Key` (#60).
         for call in ["cohere.Client(api_key=key)", "cohere.ClientV2(api_key=key)"] {
             let input = format!("import cohere\nclient = {call}\n");
             let dir = TempDir::new().unwrap();
@@ -469,13 +504,9 @@ mod tests {
                     false,
                 )
                 .unwrap();
-            assert!(result.modified, "{call} must be transformed");
-            let out = fs::read_to_string(&path).unwrap();
-            assert!(
-                out.contains("base_url=\"https://api.promptguard.co/api/v1\""),
-                "{call} must get base_url injected:\n{out}"
-            );
-            assert_reparses_clean(&out);
+            assert!(!result.modified, "{call} must be left untouched");
+            assert_eq!(result.needs_manual_routing, 1, "{call} must be reported");
+            assert_eq!(fs::read_to_string(&path).unwrap(), input);
         }
     }
 

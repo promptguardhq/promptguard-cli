@@ -19,7 +19,13 @@ pub struct ProviderInfo {
     pub py_async_class_name: &'static str,
     pub ts_class_name: &'static str,
     pub ts_base_url_param: &'static str,
-    pub ts_api_key_param: &'static str,
+    /// Constructor argument that sets request headers on every call, through
+    /// which the rewrite sends `X-API-Key`: the one header the proxy reads the
+    /// PromptGuard key from. Empty when the SDK has no such argument; the
+    /// rewrite then reports the call for manual routing, since a base URL
+    /// alone gets 401 from the proxy.
+    pub py_headers_param: &'static str,
+    pub ts_headers_param: &'static str,
 }
 
 pub const PROVIDERS: &[ProviderInfo] = &[
@@ -30,7 +36,8 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         py_async_class_name: "AsyncOpenAI",
         ts_class_name: "OpenAI",
         ts_base_url_param: "baseURL",
-        ts_api_key_param: "apiKey",
+        py_headers_param: "default_headers",
+        ts_headers_param: "defaultHeaders",
     },
     ProviderInfo {
         provider: Provider::Anthropic,
@@ -39,7 +46,8 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         py_async_class_name: "AsyncAnthropic",
         ts_class_name: "Anthropic",
         ts_base_url_param: "baseURL",
-        ts_api_key_param: "apiKey",
+        py_headers_param: "default_headers",
+        ts_headers_param: "defaultHeaders",
     },
     ProviderInfo {
         // The Cohere Python SDK has NO `CohereClient` class (verified:
@@ -55,7 +63,11 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         py_async_class_name: "",
         ts_class_name: "CohereClient",
         ts_base_url_param: "baseURL",
-        ts_api_key_param: "apiKey",
+        // `cohere.Client` / `ClientV2` take no header argument (cohere 5.x),
+        // so neither form can carry `X-API-Key`; no header option is verified
+        // for the TS `CohereClient` either.
+        py_headers_param: "",
+        ts_headers_param: "",
     },
     ProviderInfo {
         provider: Provider::HuggingFace,
@@ -64,7 +76,9 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         py_async_class_name: "AsyncInferenceClient",
         ts_class_name: "HfInference",
         ts_base_url_param: "baseUrl",
-        ts_api_key_param: "accessToken",
+        py_headers_param: "headers",
+        // `HfInference` has no constructor option for default headers.
+        ts_headers_param: "",
     },
     ProviderInfo {
         // Gemini is DETECT-ONLY (like Bedrock). The Python SDK's
@@ -84,7 +98,8 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         py_async_class_name: "",
         ts_class_name: "GoogleGenAI",
         ts_base_url_param: "",
-        ts_api_key_param: "",
+        py_headers_param: "",
+        ts_headers_param: "",
     },
     ProviderInfo {
         provider: Provider::Groq,
@@ -93,7 +108,8 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         py_async_class_name: "AsyncGroq",
         ts_class_name: "Groq",
         ts_base_url_param: "baseURL",
-        ts_api_key_param: "apiKey",
+        py_headers_param: "default_headers",
+        ts_headers_param: "defaultHeaders",
     },
     ProviderInfo {
         provider: Provider::Bedrock,
@@ -102,7 +118,8 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         py_async_class_name: "",
         ts_class_name: "BedrockRuntimeClient",
         ts_base_url_param: "",
-        ts_api_key_param: "",
+        py_headers_param: "",
+        ts_headers_param: "",
     },
 ];
 

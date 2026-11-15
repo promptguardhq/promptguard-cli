@@ -27,27 +27,67 @@ fn ts_has_base_url(source: &str, object_node: tree_sitter::Node, provider: Provi
     typescript_object_has_base_url(object_text, info)
 }
 
+/// Why a call cannot be rewritten to authenticate to the proxy, so must be
+/// reported for manual routing rather than left half-routed.
+fn ts_needs_manual_routing(
+    source: &str,
+    object_node: Option<tree_sitter::Node>,
+    info: &ProviderInfo,
+) -> bool {
+    // No header option: a base URL alone gets 401 from the proxy, which reads
+    // the PromptGuard key only from `X-API-Key`.
+    if info.ts_headers_param.is_empty() {
+        return true;
+    }
+    // A second `defaultHeaders` key would replace the first (or fail to type
+    // check); merging into the existing one is left to the developer.
+    object_node.is_some_and(|node| ts_object_has_property(source, node, info.ts_headers_param))
+}
+
+/// Whether the object literal has a property named `name`, as `name: …`,
+/// `"name": …` or the shorthand `name`.
+fn ts_object_has_property(source: &str, object_node: tree_sitter::Node, name: &str) -> bool {
+    let mut cursor = object_node.walk();
+    for child in object_node.named_children(&mut cursor) {
+        let key = match child.kind() {
+            "pair" => child.child_by_field_name("key"),
+            "shorthand_property_identifier" => Some(child),
+            _ => None,
+        };
+        if let Some(key) = key {
+            let text = &source[key.start_byte()..key.end_byte()];
+            if text.trim_matches(|c| c == '"' || c == '\'') == name {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// The two lines every rewrite adds: the proxy URL, and the header that
+/// authenticates to it. The provider key stays in the SDK's own option (or
+/// its environment default), which the proxy forwards to the provider.
+fn write_proxy_props(
+    out: &mut String,
+    info: &ProviderInfo,
+    proxy_url: &str,
+    api_key_env_var: &str,
+) {
+    let _ = writeln!(out, "  {}: \"{proxy_url}\",", info.ts_base_url_param);
+    let _ = writeln!(
+        out,
+        "  {}: {{ \"X-API-Key\": process.env.{api_key_env_var} }}",
+        info.ts_headers_param
+    );
+}
+
 fn transform_ts_object(
     source: &str,
     object_node: tree_sitter::Node,
-    provider: Provider,
+    info: &ProviderInfo,
     proxy_url: &str,
     api_key_env_var: &str,
-) -> Option<String> {
-    if ts_has_base_url(source, object_node, provider) {
-        return None;
-    }
-
-    // No registry metadata: skip the transform rather than guessing
-    // another provider's parameter names.
-    let info = ProviderInfo::get(provider)?;
-
-    // Detect-only providers (e.g. Bedrock) have empty parameter names in
-    // the registry. Skip entirely: interpolating empty names produced
-    // `{ : ..., : "..." }`, a guaranteed syntax error.
-    if info.ts_base_url_param.is_empty() || info.ts_api_key_param.is_empty() {
-        return None;
-    }
+) -> String {
     let object_text = &source[object_node.start_byte()..object_node.end_byte()];
     // Strip exactly ONE outer `{` / `}`: the delimiters of this `object`
     // node. `trim_end_matches('}')` stripped *every* trailing brace, so a
@@ -85,17 +125,12 @@ fn transform_ts_object(
                 new_object.push_str(tail);
             }
             new_object.push('\n');
-            let _ = writeln!(new_object, "  {}: \"{proxy_url}\"", info.ts_base_url_param);
+            write_proxy_props(&mut new_object, info, proxy_url, api_key_env_var);
         },
         _ => {
-            // No properties: inject both the api key and the proxy URL. Keep
-            // any comment-only content after the injected properties.
-            let _ = writeln!(
-                new_object,
-                "  {}: process.env.{api_key_env_var},",
-                info.ts_api_key_param
-            );
-            let _ = writeln!(new_object, "  {}: \"{proxy_url}\"", info.ts_base_url_param);
+            // No properties. Keep any comment-only content after the
+            // injected properties.
+            write_proxy_props(&mut new_object, info, proxy_url, api_key_env_var);
             let comments = inner.trim();
             if !comments.is_empty() {
                 let _ = writeln!(new_object, "  {comments}");
@@ -104,37 +139,20 @@ fn transform_ts_object(
     }
 
     new_object.push('}');
-    Some(new_object)
+    new_object
 }
 
-/// Build a replacement for an EMPTY argument list, `new OpenAI()`: by
-/// synthesizing an options object carrying the api key and proxy URL,
-/// mirroring the Python transformer's empty-args behavior. Previously these
-/// calls were detected but silently reported "(no changes needed)" and never
-/// routed through the proxy.
-///
-/// Returns `None` (leave the call untouched) when the argument list has any
-/// non-comment argument (an identifier, spread, call, …: the options come
-/// from elsewhere) or the provider is detect-only.
+/// Build a replacement for an EMPTY argument list, `new OpenAI()`, by
+/// synthesizing an options object carrying the proxy URL and header,
+/// mirroring the Python transformer's empty-args behavior. The SDK keeps
+/// reading the provider key from its own environment variable.
 fn synthesize_ts_options(
     source: &str,
     args_node: tree_sitter::Node,
-    provider: Provider,
+    info: &ProviderInfo,
     proxy_url: &str,
     api_key_env_var: &str,
-) -> Option<String> {
-    if last_non_comment_child_end(args_node).is_some() {
-        return None;
-    }
-
-    let info = ProviderInfo::get(provider)?;
-
-    // Detect-only providers (e.g. Bedrock) have empty parameter names in the
-    // registry, same guard as transform_ts_object.
-    if info.ts_base_url_param.is_empty() || info.ts_api_key_param.is_empty() {
-        return None;
-    }
-
+) -> String {
     let args_text = &source[args_node.start_byte()..args_node.end_byte()];
     let inner = args_text
         .strip_prefix('(')
@@ -142,19 +160,14 @@ fn synthesize_ts_options(
         .unwrap_or(args_text);
 
     let mut new_args = String::from("({\n");
-    let _ = writeln!(
-        new_args,
-        "  {}: process.env.{api_key_env_var},",
-        info.ts_api_key_param
-    );
-    let _ = writeln!(new_args, "  {}: \"{proxy_url}\"", info.ts_base_url_param);
+    write_proxy_props(&mut new_args, info, proxy_url, api_key_env_var);
     // Keep any comment-only content from the original argument list.
     let comments = inner.trim();
     if !comments.is_empty() {
         let _ = writeln!(new_args, "  {comments}");
     }
     new_args.push_str("})");
-    Some(new_args)
+    new_args
 }
 
 /// Byte offset just past the last named child of `node` that is not a
@@ -195,38 +208,46 @@ impl Transformer for TypeScriptTransformer {
             grammar,
             provider,
             |source, args_node| {
+                // No registry metadata, or a detect-only provider (Bedrock,
+                // Gemini: empty parameter names; interpolating them produced
+                // `{ : ... }`, a syntax error): leave the call untouched.
+                let info = ProviderInfo::get(provider)?;
+                if info.ts_base_url_param.is_empty() {
+                    return None;
+                }
+
                 let mut cursor = args_node.walk();
-                for child in args_node.children(&mut cursor) {
-                    if child.kind() == "object" {
-                        return transform_ts_object(
-                            source,
-                            child,
-                            provider,
-                            proxy_url,
-                            api_key_env_var,
-                        )
-                        .map(|new_obj| (child.start_byte(), child.end_byte(), new_obj));
+                let object = args_node
+                    .children(&mut cursor)
+                    .find(|child| child.kind() == "object");
+
+                if let Some(object) = object {
+                    if ts_has_base_url(source, object, provider) {
+                        return None;
                     }
+                    if ts_needs_manual_routing(source, Some(object), info) {
+                        manual_skips.set(manual_skips.get() + 1);
+                        return None;
+                    }
+                    let new_obj =
+                        transform_ts_object(source, object, info, proxy_url, api_key_env_var);
+                    return Some((object.start_byte(), object.end_byte(), new_obj));
                 }
-                // No object literal argument: synthesize an options object
-                // for empty argument lists (`new OpenAI()`), which were
-                // previously detected but never transformed.
-                if let Some(new_args) =
-                    synthesize_ts_options(source, args_node, provider, proxy_url, api_key_env_var)
+
+                // A non-object argument (identifier, spread, call, …) means
+                // the options come from elsewhere: the call needs manual
+                // routing, which is reported instead of silently claiming
+                // "no changes needed".
+                if last_non_comment_child_end(args_node).is_some()
+                    || ts_needs_manual_routing(source, None, info)
                 {
-                    return Some((args_node.start_byte(), args_node.end_byte(), new_args));
-                }
-                // Synthesis declined. For a transformable provider that means
-                // the options come from a dynamic argument (identifier,
-                // spread, call, …), the call needs manual routing; report
-                // that instead of silently claiming "no changes needed".
-                let transformable = ProviderInfo::get(provider).is_some_and(|i| {
-                    !i.ts_base_url_param.is_empty() && !i.ts_api_key_param.is_empty()
-                });
-                if transformable && last_non_comment_child_end(args_node).is_some() {
                     manual_skips.set(manual_skips.get() + 1);
+                    return None;
                 }
-                None
+                // Empty argument list (`new OpenAI()`): synthesize options.
+                let new_args =
+                    synthesize_ts_options(source, args_node, info, proxy_url, api_key_env_var);
+                Some((args_node.start_byte(), args_node.end_byte(), new_args))
             },
             |s| s,
             dry_run,
@@ -277,10 +298,10 @@ mod tests {
     /// closing brace too, producing an unbalanced/invalid object literal.
     #[test]
     fn nested_object_literal_keeps_balanced_braces() {
-        let input = "import OpenAI from \"openai\";\nconst client = new OpenAI({apiKey: k, defaultHeaders: {timeout: 1}});\n";
+        let input = "import OpenAI from \"openai\";\nconst client = new OpenAI({apiKey: k, fetchOptions: {timeout: 1}});\n";
         let out = transform_ts(input);
         assert!(
-            out.contains("defaultHeaders: {timeout: 1}"),
+            out.contains("fetchOptions: {timeout: 1}"),
             "nested object must survive:\n{out}"
         );
         assert!(out.contains("baseURL: \"https://api.promptguard.co/api/v1\""));
@@ -348,14 +369,14 @@ mod tests {
     /// Regression: `new OpenAI()` with NO options object was detected but
     /// silently reported "(no changes needed)", the call never routed
     /// through the proxy. An options object must be synthesized, mirroring
-    /// the Python empty-args behavior.
+    /// the Python empty-args behavior. #60 has the header half of it.
     #[test]
     fn no_arguments_synthesizes_options_object() {
         let input = "import OpenAI from \"openai\";\nconst client = new OpenAI();\n";
         let out = transform_ts(input);
         assert!(
-            out.contains("apiKey: process.env.PROMPTGUARD_API_KEY"),
-            "api key must be injected:\n{out}"
+            out.contains("\"X-API-Key\": process.env.PROMPTGUARD_API_KEY"),
+            "proxy auth header must be injected:\n{out}"
         );
         assert!(
             out.contains("baseURL: \"https://api.promptguard.co/api/v1\""),
