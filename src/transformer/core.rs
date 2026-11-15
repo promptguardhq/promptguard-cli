@@ -123,6 +123,40 @@ where
     })
 }
 
+/// What the Anthropic rewrite decided for one constructor call.
+pub(super) enum AnthropicRewrite {
+    /// Already routed through the proxy, or pointed at the developer's own
+    /// base URL: leave it, and report nothing.
+    Unchanged,
+    /// A rewrite could break the call or could not see all of its options:
+    /// leave it, and report it for manual routing.
+    Manual,
+    /// Replace the argument list (Python) or options object (TypeScript).
+    Replace(String),
+}
+
+/// The base URL an Anthropic client needs: the proxy URL without its trailing
+/// `/v1`, which the Anthropic SDK appends itself. A proxy URL that does not
+/// end in `/v1` is used as given.
+pub(super) fn anthropic_base_url(proxy_url: &str) -> &str {
+    let trimmed = proxy_url.trim_end_matches('/');
+    trimmed.strip_suffix("/v1").unwrap_or(trimmed)
+}
+
+/// Whether a base-URL value is one this rewrite wrote: the proxy URL an
+/// earlier version used, or the Anthropic base URL this version uses. `value`
+/// is the literal's text without its quotes.
+pub(super) fn anthropic_base_is_ours(value: &str, proxy_url: &str) -> bool {
+    value == proxy_url || value == anthropic_base_url(proxy_url)
+}
+
+/// The string literal `text` without its quotes, when it is a plain one.
+pub(super) fn unquote(text: &str) -> Option<&str> {
+    ['"', '\'']
+        .iter()
+        .find_map(|&q| text.strip_prefix(q).and_then(|s| s.strip_suffix(q)))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {

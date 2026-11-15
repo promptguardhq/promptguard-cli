@@ -1,4 +1,6 @@
-use super::core::transform_file_generic;
+use super::core::{
+    anthropic_base_is_ours, anthropic_base_url, transform_file_generic, unquote, AnthropicRewrite,
+};
 use crate::detector::{typescript_object_has_base_url, Grammar, ProviderInfo};
 use crate::transformer::Transformer;
 use crate::types::{Provider, TransformResult};
@@ -172,6 +174,134 @@ fn transform_ts_object(
     new_object
 }
 
+/// The Anthropic rewrite, the TypeScript side of `python::anthropic_args`:
+/// `apiKey` comes out and its value becomes the `Authorization: Bearer`
+/// header beside the proxy's `X-API-Key`, and the base URL drops the `/v1`
+/// the SDK appends itself. Returns the replacement for the options object, or
+/// for the whole argument list when it was empty.
+fn anthropic_options<'tree>(
+    source: &str,
+    args_node: tree_sitter::Node<'tree>,
+    proxy_url: &str,
+    api_key_env_var: &str,
+) -> (AnthropicRewrite, tree_sitter::Node<'tree>) {
+    let text = |node: tree_sitter::Node| &source[node.start_byte()..node.end_byte()];
+    let mut cursor = args_node.walk();
+    let object = args_node
+        .children(&mut cursor)
+        .find(|child| child.kind() == "object");
+
+    let Some(object) = object else {
+        // A non-object argument means the options come from elsewhere.
+        if last_non_comment_child_end(args_node).is_some() {
+            return (AnthropicRewrite::Manual, args_node);
+        }
+        let comments: Vec<&str> = {
+            let mut c = args_node.walk();
+            args_node.named_children(&mut c).map(&text).collect()
+        };
+        let body = anthropic_object(&[], &comments, None, proxy_url, api_key_env_var);
+        return (AnthropicRewrite::Replace(format!("({body})")), args_node);
+    };
+
+    if ts_object_has_dynamic_keys(object) {
+        return (AnthropicRewrite::Manual, object);
+    }
+
+    let mut kept = Vec::new();
+    let mut comments = Vec::new();
+    let mut api_key = None;
+    let mut base_url = None;
+    let mut has_headers = false;
+    let mut cursor = object.walk();
+    for child in object.named_children(&mut cursor) {
+        let (name, value) = match child.kind() {
+            "comment" => {
+                comments.push(text(child));
+                continue;
+            },
+            "pair" => match (
+                child.child_by_field_name("key"),
+                child.child_by_field_name("value"),
+            ) {
+                (Some(key), Some(value)) => (unquote(text(key)).unwrap_or(text(key)), text(value)),
+                _ => return (AnthropicRewrite::Manual, object),
+            },
+            "shorthand_property_identifier" => (text(child), text(child)),
+            _ => {
+                kept.push(text(child));
+                continue;
+            },
+        };
+        match name {
+            "baseURL" => base_url = Some(value),
+            "apiKey" => api_key = Some(value),
+            "defaultHeaders" => has_headers = true,
+            // Another credential the rewrite would have to override.
+            "authToken" => return (AnthropicRewrite::Manual, object),
+            _ => kept.push(text(child)),
+        }
+    }
+
+    let base = anthropic_base_url(proxy_url);
+    if let Some(value) = base_url {
+        match unquote(value) {
+            Some(url) if anthropic_base_is_ours(url, proxy_url) => {
+                if has_headers && url == base {
+                    return (AnthropicRewrite::Unchanged, object);
+                }
+            },
+            // The developer's own base URL.
+            _ => return (AnthropicRewrite::Unchanged, object),
+        }
+    }
+    if has_headers {
+        return (AnthropicRewrite::Manual, object);
+    }
+
+    let body = anthropic_object(&kept, &comments, api_key, proxy_url, api_key_env_var);
+    (AnthropicRewrite::Replace(body), object)
+}
+
+/// The rebuilt Anthropic options object. `api_key` is the expression the
+/// call passed as `apiKey`; one naming the proxy key's variable is an
+/// earlier rewrite's, and the Anthropic key is read from its own variable.
+fn anthropic_object(
+    kept: &[&str],
+    comments: &[&str],
+    api_key: Option<&str>,
+    proxy_url: &str,
+    api_key_env_var: &str,
+) -> String {
+    let key = match api_key {
+        // `??` cannot sit beside an unparenthesized `||` or `&&`.
+        Some(expr) if !expr.contains(api_key_env_var) => {
+            if expr
+                .chars()
+                .all(|c| c.is_alphanumeric() || matches!(c, '_' | '$' | '.'))
+            {
+                expr.to_string()
+            } else {
+                format!("({expr})")
+            }
+        },
+        _ => "process.env.ANTHROPIC_API_KEY".to_string(),
+    };
+    let mut out = String::from("{\n");
+    for prop in kept {
+        let _ = writeln!(out, "  {prop},");
+    }
+    for comment in comments {
+        let _ = writeln!(out, "  {comment}");
+    }
+    let _ = writeln!(out, "  baseURL: \"{}\",", anthropic_base_url(proxy_url));
+    out.push_str("  defaultHeaders: {\n");
+    let _ = writeln!(out, "    \"X-API-Key\": process.env.{api_key_env_var},");
+    let _ = writeln!(out, "    Authorization: `Bearer ${{{key} ?? \"\"}}`");
+    out.push_str("  }\n}");
+    out
+}
+
 /// Build a replacement for an EMPTY argument list, `new OpenAI()`, by
 /// synthesizing an options object carrying the proxy URL and header,
 /// mirroring the Python transformer's empty-args behavior. The SDK keeps
@@ -241,6 +371,20 @@ impl Transformer for TypeScriptTransformer {
                 // No registry metadata, or a detect-only provider (Bedrock,
                 // Gemini: empty parameter names; interpolating them produced
                 // `{ : ... }`, a syntax error): leave the call untouched.
+                if provider == Provider::Anthropic {
+                    let (rewrite, node) =
+                        anthropic_options(source, args_node, proxy_url, api_key_env_var);
+                    return match rewrite {
+                        AnthropicRewrite::Unchanged => None,
+                        AnthropicRewrite::Manual => {
+                            manual_skips.set(manual_skips.get() + 1);
+                            None
+                        },
+                        AnthropicRewrite::Replace(new) => {
+                            Some((node.start_byte(), node.end_byte(), new))
+                        },
+                    };
+                }
                 let info = ProviderInfo::get(provider)?;
                 if info.ts_base_url_param.is_empty() {
                     return None;

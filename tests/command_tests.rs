@@ -404,10 +404,10 @@ client = OpenAI()
     );
 }
 
-/// Python Anthropic clients are reported for manual routing, not rewritten:
-/// the SDK sends its own key in the header the proxy authenticates on (#66).
+/// Python Anthropic clients get the proxy's base URL without `/v1` (the SDK
+/// appends it) and both headers; the generic rewrite cannot serve them (#66).
 #[test]
-fn test_transform_python_anthropic_is_reported_for_manual_routing() {
+fn test_transform_python_anthropic_routes_through_messages() {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
     let python_file = temp_dir.path().join("anthropic_app.py");
@@ -426,10 +426,13 @@ client = Anthropic()
     )
     .expect("Transform should succeed");
 
-    assert!(!result.modified, "File should be left untouched");
-    assert_eq!(result.needs_manual_routing, 1);
+    assert!(result.modified, "File should be modified");
     let content = fs::read_to_string(&python_file).expect("Failed to read");
-    assert_eq!(content, original);
+    assert!(
+        content.contains("base_url=\"https://api.promptguard.co/api\""),
+        "{content}"
+    );
+    assert!(content.contains("\"Authorization\""), "{content}");
 }
 
 /// Test that already-transformed files are not modified again

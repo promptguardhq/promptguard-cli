@@ -1,4 +1,6 @@
-use super::core::transform_file_generic;
+use super::core::{
+    anthropic_base_is_ours, anthropic_base_url, transform_file_generic, unquote, AnthropicRewrite,
+};
 use crate::detector::{python_args_have_base_url, Grammar, ProviderInfo};
 use crate::transformer::Transformer;
 use crate::types::{Provider, TransformResult};
@@ -138,6 +140,92 @@ fn transform_args(
     new_args
 }
 
+/// The Anthropic rewrite. The SDK sends its own key in `X-Api-Key`, the
+/// header the proxy authenticates on, and refuses `api_key` together with a
+/// bearer token, so the call is rebuilt: `api_key` comes out and its value
+/// becomes the `Authorization: Bearer` header the proxy forwards to
+/// Anthropic, beside the proxy's own `X-API-Key`, and the base URL drops the
+/// `/v1` the SDK appends itself. A call an earlier version rewrote (the
+/// proxy's key as `api_key`, the `/api/v1` base URL) is repaired the same
+/// way, with the Anthropic key read from `ANTHROPIC_API_KEY`.
+fn anthropic_args(
+    source: &str,
+    args_node: tree_sitter::Node,
+    proxy_url: &str,
+    api_key_env_var: &str,
+) -> AnthropicRewrite {
+    let text = |node: tree_sitter::Node| &source[node.start_byte()..node.end_byte()];
+    let mut kept = Vec::new();
+    let mut comments = Vec::new();
+    let mut api_key = None;
+    let mut base_url = None;
+    let mut has_headers = false;
+
+    let mut cursor = args_node.walk();
+    for child in args_node.named_children(&mut cursor) {
+        match child.kind() {
+            "comment" => comments.push(text(child)),
+            "keyword_argument" => {
+                let (Some(name), Some(value)) = (
+                    child.child_by_field_name("name"),
+                    child.child_by_field_name("value"),
+                ) else {
+                    return AnthropicRewrite::Manual;
+                };
+                match text(name) {
+                    "base_url" => base_url = Some(text(value)),
+                    "api_key" => api_key = Some(text(value)),
+                    "default_headers" => has_headers = true,
+                    // Other credentials the rewrite would have to override.
+                    "auth_token" | "credentials" | "profile" => return AnthropicRewrite::Manual,
+                    _ => kept.push(text(child)),
+                }
+            },
+            // Positional arguments (the SDK takes none) and splats, whose
+            // contents are unknown until run time.
+            _ => return AnthropicRewrite::Manual,
+        }
+    }
+
+    let base = anthropic_base_url(proxy_url);
+    if let Some(value) = base_url {
+        match unquote(value) {
+            Some(url) if anthropic_base_is_ours(url, proxy_url) => {
+                if has_headers && url == base {
+                    return AnthropicRewrite::Unchanged;
+                }
+            },
+            // The developer's own base URL.
+            _ => return AnthropicRewrite::Unchanged,
+        }
+    }
+    if has_headers {
+        return AnthropicRewrite::Manual;
+    }
+
+    let bearer = match api_key {
+        Some(expr) if !expr.contains(api_key_env_var) => format!("\"Bearer \" + ({expr} or \"\")"),
+        _ => "\"Bearer \" + os.environ.get(\"ANTHROPIC_API_KEY\", \"\")".to_string(),
+    };
+
+    let mut out = String::from("(\n");
+    for arg in kept {
+        let _ = writeln!(out, "    {arg},");
+    }
+    for comment in comments {
+        let _ = writeln!(out, "    {comment}");
+    }
+    let _ = writeln!(out, "    base_url=\"{base}\",");
+    out.push_str("    default_headers={\n");
+    let _ = writeln!(
+        out,
+        "        \"X-API-Key\": os.environ.get(\"{api_key_env_var}\", \"\"),"
+    );
+    let _ = writeln!(out, "        \"Authorization\": {bearer},");
+    out.push_str("    },\n)");
+    AnthropicRewrite::Replace(out)
+}
+
 /// Whether the argument list forwards dynamic arguments via a splat
 /// (`OpenAI(**cfg)` / `OpenAI(*args)`).
 ///
@@ -242,6 +330,18 @@ impl Transformer for PythonTransformer {
             Grammar::Python,
             provider,
             |source, args_node| {
+                if provider == Provider::Anthropic {
+                    return match anthropic_args(source, args_node, proxy_url, api_key_env_var) {
+                        AnthropicRewrite::Unchanged => None,
+                        AnthropicRewrite::Manual => {
+                            manual_skips.set(manual_skips.get() + 1);
+                            None
+                        },
+                        AnthropicRewrite::Replace(new_args) => {
+                            Some((args_node.start_byte(), args_node.end_byte(), new_args))
+                        },
+                    };
+                }
                 let headers_param = ProviderInfo::get(provider).map_or("", |i| i.py_headers_param);
                 let args_text = &source[args_node.start_byte()..args_node.end_byte()];
                 let with_base_url = !has_base_url(source, args_node);

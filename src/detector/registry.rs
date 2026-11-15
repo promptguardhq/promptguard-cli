@@ -46,9 +46,10 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         py_async_class_name: "AsyncAnthropic",
         ts_class_name: "Anthropic",
         ts_base_url_param: "baseURL",
-        // Not rewritten until #66: the SDK sends its own key in `X-Api-Key`,
-        // the header the proxy authenticates on, and appends `/v1` to the
-        // base URL itself. Calls are reported for manual routing instead.
+        // Rewritten by its own path (`anthropic_args` / `anthropic_options`):
+        // the SDK sends its own key in `X-Api-Key`, the header the proxy
+        // authenticates on, and appends `/v1` to the base URL itself, so the
+        // generic header rewrite cannot serve it.
         py_headers_param: "",
         ts_headers_param: "",
     },

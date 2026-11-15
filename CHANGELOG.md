@@ -26,9 +26,17 @@ survives three releases is a changelog nobody is maintaining.
   header added when you run `init` or `apply` again. Calls the rewrite cannot
   make work are left untouched and listed for manual routing: ones that
   already set headers or pass dynamic options (`**cfg`, `...cfg`),
-  `cohere.Client`, the TypeScript Hugging Face and Cohere clients, and
-  Anthropic clients, whose SDK sends its own key in the header the proxy
-  authenticates on (#66).
+  `cohere.Client`, and the TypeScript Hugging Face and Cohere clients.
+- **Anthropic clients rewritten by `init` and `apply` now reach the proxy.**
+  The rewrite used the `/api/v1` proxy URL, but the Anthropic SDK appends
+  `/v1` itself, so requests went to `/api/v1/v1/messages`; and the SDK sends
+  its key in `X-Api-Key`, the header the proxy reads your PromptGuard key
+  from. The rewrite now uses the proxy URL without `/v1`, sends your
+  PromptGuard key as `X-API-Key`, and moves your Anthropic key out of
+  `api_key` / `apiKey` into `Authorization: Bearer`, which the proxy forwards
+  to Anthropic. A client an earlier version rewrote is repaired when you run
+  `init` or `apply` again. Calls that set `auth_token`, `credentials`,
+  `profile` or headers of their own are listed for manual routing (#66).
 
 ## [2.5.1] - 2026-11-14
 

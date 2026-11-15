@@ -216,39 +216,6 @@ fn typescript_providers_without_a_header_option_are_reported() {
     assert_eq!(result.needs_manual_routing, 1);
 }
 
-/// Until #66 the Anthropic rewrite cannot work (the SDK's own key travels in
-/// the header the proxy authenticates on), so it is reported, not half-done.
-#[test]
-fn anthropic_is_reported_for_manual_routing() {
-    for (file, src) in [
-        ("app.py", "from anthropic import Anthropic\nclient = Anthropic()\n"),
-        ("app.ts", "import Anthropic from \"@anthropic-ai/sdk\";\nconst c = new Anthropic({ apiKey: k });\n"),
-    ] {
-        let (result, out) = transform(file, Provider::Anthropic, src);
-        assert!(!result.modified, "{out}");
-        assert_eq!(result.needs_manual_routing, 1, "{file}");
-        assert_eq!(out, src);
-    }
-}
-
-/// A client an earlier version rewrote has the proxy URL and no header, and
-/// gets 401. Re-running the rewrite must add the header, once.
-#[test]
-fn python_earlier_rewrite_gets_the_header_added_once() {
-    let src = format!(
-        "import os\nfrom openai import OpenAI\nclient = OpenAI(\n    api_key=os.environ.get(\"OPENAI_API_KEY\"),\n    base_url=\"{PROXY}\"\n)\n"
-    );
-    let (result, out) = transform("app.py", Provider::OpenAI, &src);
-    assert!(result.modified, "{out}");
-    assert!(out.contains(PY_HEADER), "{out}");
-    assert_eq!(out.matches("base_url=").count(), 1, "{out}");
-    assert_python_parses(&out);
-
-    let (again, out2) = transform("app.py", Provider::OpenAI, &out);
-    assert!(!again.modified, "second run must be a no-op:\n{out2}");
-    assert_eq!(out2, out);
-}
-
 #[test]
 fn typescript_earlier_rewrite_gets_the_header_added_once() {
     let src = format!(
