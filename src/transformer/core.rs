@@ -150,6 +150,45 @@ pub(super) fn anthropic_base_is_ours(value: &str, proxy_url: &str) -> bool {
     value == proxy_url || value == anthropic_base_url(proxy_url)
 }
 
+/// What the Anthropic rewrite does with a call's existing base URL and
+/// headers, before rebuilding it: `Some` decides, `None` means rebuild.
+/// `base_url` is the call's base-URL value as written, if it has one.
+pub(super) fn anthropic_decision(
+    base_url: Option<&str>,
+    has_headers: bool,
+    proxy_url: &str,
+) -> Option<AnthropicRewrite> {
+    if let Some(value) = base_url {
+        match unquote(value) {
+            Some(url) if anthropic_base_is_ours(url, proxy_url) => {
+                if has_headers && url == anthropic_base_url(proxy_url) {
+                    // Already routed by this rewrite.
+                    return Some(AnthropicRewrite::Unchanged);
+                }
+            },
+            // The developer's own base URL.
+            _ => return Some(AnthropicRewrite::Unchanged),
+        }
+    }
+    // Headers of the call's own, which a rebuild would have to merge.
+    has_headers.then_some(AnthropicRewrite::Manual)
+}
+
+/// Whether a key expression reads the proxy key's variable `var` itself, as
+/// an earlier rewrite wrote it: `"VAR"` / `'VAR'` (Python) or `.VAR` ending
+/// at an identifier boundary (`process.env.VAR`). A substring match took
+/// `CLAUDE_KEY` for a variable named `KEY`.
+pub(super) fn expr_names_env_var(expr: &str, var: &str) -> bool {
+    let quoted = [format!("\"{var}\""), format!("'{var}'")]
+        .iter()
+        .any(|q| expr.contains(q.as_str()));
+    let member = format!(".{var}");
+    quoted
+        || expr.match_indices(&member).any(|(i, m)| {
+            !expr[i + m.len()..].starts_with(|c: char| c.is_alphanumeric() || c == '_' || c == '$')
+        })
+}
+
 /// The string literal `text` without its quotes, when it is a plain one.
 pub(super) fn unquote(text: &str) -> Option<&str> {
     ['"', '\'']

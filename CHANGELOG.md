@@ -36,7 +36,11 @@ survives three releases is a changelog nobody is maintaining.
   `api_key` / `apiKey` into `Authorization: Bearer`, which the proxy forwards
   to Anthropic. A client an earlier version rewrote is repaired when you run
   `init` or `apply` again. Calls that set `auth_token`, `credentials`,
-  `profile` or headers of their own are listed for manual routing (#66).
+  `profile` or headers of their own are listed for manual routing (#66). A
+  client that took its credential from `ANTHROPIC_AUTH_TOKEN`, a profile or
+  workload identity in the environment now sends `ANTHROPIC_API_KEY` instead:
+  store your Anthropic key in PromptGuard as a provider key, which the proxy
+  uses in place of the header.
 
 ## [2.5.1] - 2026-11-14
 

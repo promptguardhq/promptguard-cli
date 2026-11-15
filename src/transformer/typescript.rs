@@ -1,5 +1,6 @@
 use super::core::{
-    anthropic_base_is_ours, anthropic_base_url, transform_file_generic, unquote, AnthropicRewrite,
+    anthropic_base_url, anthropic_decision, expr_names_env_var, transform_file_generic, unquote,
+    AnthropicRewrite,
 };
 use crate::detector::{typescript_object_has_base_url, Grammar, ProviderInfo};
 use crate::transformer::Transformer;
@@ -77,7 +78,7 @@ fn ts_object_has_property(source: &str, object_node: tree_sitter::Node, name: &s
         };
         if let Some(key) = key {
             let text = &source[key.start_byte()..key.end_byte()];
-            if text.trim_matches(|c| c == '"' || c == '\'') == name {
+            if unquote(text).unwrap_or(text) == name {
                 return true;
             }
         }
@@ -243,22 +244,9 @@ fn anthropic_options<'tree>(
         }
     }
 
-    let base = anthropic_base_url(proxy_url);
-    if let Some(value) = base_url {
-        match unquote(value) {
-            Some(url) if anthropic_base_is_ours(url, proxy_url) => {
-                if has_headers && url == base {
-                    return (AnthropicRewrite::Unchanged, object);
-                }
-            },
-            // The developer's own base URL.
-            _ => return (AnthropicRewrite::Unchanged, object),
-        }
+    if let Some(decided) = anthropic_decision(base_url, has_headers, proxy_url) {
+        return (decided, object);
     }
-    if has_headers {
-        return (AnthropicRewrite::Manual, object);
-    }
-
     let body = anthropic_object(&kept, &comments, api_key, proxy_url, api_key_env_var);
     (AnthropicRewrite::Replace(body), object)
 }
@@ -275,7 +263,7 @@ fn anthropic_object(
 ) -> String {
     let key = match api_key {
         // `??` cannot sit beside an unparenthesized `||` or `&&`.
-        Some(expr) if !expr.contains(api_key_env_var) => {
+        Some(expr) if !expr_names_env_var(expr, api_key_env_var) => {
             if expr
                 .chars()
                 .all(|c| c.is_alphanumeric() || matches!(c, '_' | '$' | '.'))

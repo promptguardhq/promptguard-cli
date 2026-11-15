@@ -306,3 +306,36 @@ fn typescript_other_base_urls_are_left_alone() {
         0,
     );
 }
+
+/// Only an expression naming the proxy key's variable itself is an earlier
+/// rewrite; a short variable name inside another name is not.
+#[test]
+fn a_short_env_var_name_does_not_swallow_the_anthropic_key() {
+    let dir = TempDir::new().unwrap();
+    for (file, src, expected) in [
+        (
+            "app.py",
+            "from anthropic import Anthropic\nclient = Anthropic(api_key=os.getenv(\"CLAUDE_KEY\"))\n",
+            r#""Bearer " + (os.getenv("CLAUDE_KEY") or "")"#,
+        ),
+        (
+            "app.ts",
+            "import Anthropic from \"@anthropic-ai/sdk\";\nconst c = new Anthropic({ apiKey: process.env.CLAUDE_KEY });\n",
+            "`Bearer ${process.env.CLAUDE_KEY ?? \"\"}`",
+        ),
+    ] {
+        let path = dir.path().join(file);
+        fs::write(&path, src).unwrap();
+        transformer::transform_file(&path, Provider::Anthropic, PROXY, "KEY", false).unwrap();
+        let out = fs::read_to_string(&path).unwrap();
+        assert!(out.contains(expected), "{out}");
+    }
+}
+
+#[test]
+fn typescript_logical_key_expression_is_parenthesized() {
+    let src = "import Anthropic from \"@anthropic-ai/sdk\";\nconst c = new Anthropic({ apiKey: a || b });\n";
+    let (_, out) = transform("app.ts", src);
+    assert!(out.contains("`Bearer ${(a || b) ?? \"\"}`"), "{out}");
+    assert_ts_parses(&out);
+}

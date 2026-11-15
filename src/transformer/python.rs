@@ -1,5 +1,6 @@
 use super::core::{
-    anthropic_base_is_ours, anthropic_base_url, transform_file_generic, unquote, AnthropicRewrite,
+    anthropic_base_url, anthropic_decision, expr_names_env_var, transform_file_generic,
+    AnthropicRewrite,
 };
 use crate::detector::{python_args_have_base_url, Grammar, ProviderInfo};
 use crate::transformer::Transformer;
@@ -187,24 +188,15 @@ fn anthropic_args(
         }
     }
 
+    if let Some(decided) = anthropic_decision(base_url, has_headers, proxy_url) {
+        return decided;
+    }
     let base = anthropic_base_url(proxy_url);
-    if let Some(value) = base_url {
-        match unquote(value) {
-            Some(url) if anthropic_base_is_ours(url, proxy_url) => {
-                if has_headers && url == base {
-                    return AnthropicRewrite::Unchanged;
-                }
-            },
-            // The developer's own base URL.
-            _ => return AnthropicRewrite::Unchanged,
-        }
-    }
-    if has_headers {
-        return AnthropicRewrite::Manual;
-    }
 
     let bearer = match api_key {
-        Some(expr) if !expr.contains(api_key_env_var) => format!("\"Bearer \" + ({expr} or \"\")"),
+        Some(expr) if !expr_names_env_var(expr, api_key_env_var) => {
+            format!("\"Bearer \" + ({expr} or \"\")")
+        },
         _ => "\"Bearer \" + os.environ.get(\"ANTHROPIC_API_KEY\", \"\")".to_string(),
     };
 
