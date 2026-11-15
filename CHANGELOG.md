@@ -13,6 +13,21 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Clients rewritten by `init` and `apply` now authenticate to the proxy.**
+  The rewrite added the proxy base URL but never the `X-API-Key` header, the
+  only place the proxy reads your PromptGuard key from, so every rewritten
+  client got `401 missing_api_key`. It now adds `default_headers` (Python) or
+  `defaultHeaders` (TypeScript) carrying the key, and leaves your provider key
+  where it was: a client with no arguments used to get your PromptGuard key as
+  its provider key, which the proxy forwards to the provider, where it failed.
+  Calls the rewrite cannot make work are left untouched and listed for manual
+  routing: ones that already set headers, `cohere.Client`, and the TypeScript
+  Hugging Face and Cohere clients. A client an earlier version already
+  rewrote is skipped, because it has a base URL; add the header to it by hand.
+  Anthropic clients still need manual setup (#66).
+
 ## [2.5.1] - 2026-11-14
 
 ### Fixed
