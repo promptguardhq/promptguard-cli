@@ -72,6 +72,9 @@ pub struct DetectionInstance {
     pub column: usize,
     pub has_base_url: bool,
     pub current_base_url: Option<String>,
+    /// Whether the call sets an `X-API-Key` header, the only place the proxy
+    /// reads its key from: a base URL without it gets 401.
+    pub has_api_key_header: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

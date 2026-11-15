@@ -310,9 +310,10 @@ fn scan_project_output_schema() -> serde_json::Value {
                                     "file": {"type": "string"},
                                     "line": {"type": "integer"},
                                     "column": {"type": "integer"},
-                                    "has_base_url": {"type": "boolean"}
+                                    "has_base_url": {"type": "boolean"},
+                                    "has_api_key_header": {"type": "boolean"}
                                 },
-                                "required": ["file", "line", "column", "has_base_url"]
+                                "required": ["file", "line", "column", "has_base_url", "has_api_key_header"]
                             }
                         }
                     },
@@ -643,6 +644,7 @@ fn handle_scan_project(params: &serde_json::Value) -> serde_json::Value {
                     "line": inst.line,
                     "column": inst.column,
                     "has_base_url": inst.has_base_url,
+                    "has_api_key_header": inst.has_api_key_header,
                 })
             })
             .collect();

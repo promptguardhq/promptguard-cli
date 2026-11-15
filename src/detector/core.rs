@@ -118,6 +118,15 @@ pub fn typescript_object_has_base_url(
     object_text.contains("base_url:")
 }
 
+/// Whether a constructor's argument text sets an `X-API-Key` header: the
+/// header name as a quoted string, in any case (dict keys in Python, object
+/// keys in TypeScript, where the hyphen forces quotes). The SDK's own
+/// `api_key` / `apiKey` argument never matches.
+fn args_set_api_key_header(args_text: &str) -> bool {
+    let lower = args_text.to_ascii_lowercase();
+    lower.contains("\"x-api-key\"") || lower.contains("'x-api-key'")
+}
+
 fn python_check_base_url(source: &str, args_node: tree_sitter::Node) -> (bool, Option<String>) {
     let args_text = &source[args_node.start_byte()..args_node.end_byte()];
     let has_base_url = python_args_have_base_url(args_text);
@@ -164,17 +173,20 @@ fn detect_in_tree(
             let node = capture.node;
             let start_position = node.start_position();
 
-            let (has_base_url, current_base_url) = match_
+            let args = match_
                 .captures
                 .iter()
-                .find(|c| query.capture_names()[c.index as usize] == "args")
-                .map_or((false, None), |c| {
-                    if grammar.is_python() {
-                        python_check_base_url(source, c.node)
-                    } else {
-                        typescript_check_base_url(source, c.node, provider)
-                    }
-                });
+                .find(|c| query.capture_names()[c.index as usize] == "args");
+            let (has_base_url, current_base_url) = args.map_or((false, None), |c| {
+                if grammar.is_python() {
+                    python_check_base_url(source, c.node)
+                } else {
+                    typescript_check_base_url(source, c.node, provider)
+                }
+            });
+            let has_api_key_header = args.is_some_and(|c| {
+                args_set_api_key_header(&source[c.node.start_byte()..c.node.end_byte()])
+            });
 
             instances.push(DetectionInstance {
                 file_path: file_path.to_path_buf(),
@@ -182,6 +194,7 @@ fn detect_in_tree(
                 column: start_position.column + 1,
                 has_base_url,
                 current_base_url,
+                has_api_key_header,
             });
         }
     }

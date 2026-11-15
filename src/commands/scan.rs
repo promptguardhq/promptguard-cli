@@ -373,6 +373,7 @@ impl ScanCommand {
                         "column": inst.column,
                         "has_base_url": inst.has_base_url,
                         "current_base_url": inst.current_base_url,
+                        "has_api_key_header": inst.has_api_key_header,
                     })
                 })
                 .collect();

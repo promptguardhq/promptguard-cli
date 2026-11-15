@@ -835,6 +835,13 @@ fn scan_project_returns_its_findings_as_structured_content() {
             .any(|p| p["provider"] == "openai"),
         "{found}"
     );
+    // Each instance says whether it sends the proxy's `X-API-Key`: a base URL
+    // alone gets 401. The fixture's clients have a base URL and no header.
+    for provider in found["providers"].as_array().unwrap() {
+        for instance in provider["instances"].as_array().unwrap() {
+            assert_eq!(instance["has_api_key_header"], false, "{instance}");
+        }
+    }
 }
 
 #[test]
