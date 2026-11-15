@@ -13,6 +13,8 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-11-16
+
 ### Added
 
 - **`scan --json` and the MCP `promptguard_scan_project` tool report
