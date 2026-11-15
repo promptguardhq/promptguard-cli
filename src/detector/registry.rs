@@ -20,8 +20,8 @@ pub struct ProviderInfo {
     pub ts_class_name: &'static str,
     pub ts_base_url_param: &'static str,
     /// Constructor argument that sets request headers on every call, through
-    /// which the rewrite sends `X-API-Key`: the one header the proxy reads the
-    /// PromptGuard key from. Empty when the SDK has no such argument; the
+    /// which the rewrite sends `X-API-Key`: the one header the proxy reads its
+    /// key from. Empty when the SDK has no such argument; the
     /// rewrite then reports the call for manual routing, since a base URL
     /// alone gets 401 from the proxy.
     pub py_headers_param: &'static str,
@@ -46,8 +46,11 @@ pub const PROVIDERS: &[ProviderInfo] = &[
         py_async_class_name: "AsyncAnthropic",
         ts_class_name: "Anthropic",
         ts_base_url_param: "baseURL",
-        py_headers_param: "default_headers",
-        ts_headers_param: "defaultHeaders",
+        // Not rewritten until #66: the SDK sends its own key in `X-Api-Key`,
+        // the header the proxy authenticates on, and appends `/v1` to the
+        // base URL itself. Calls are reported for manual routing instead.
+        py_headers_param: "",
+        ts_headers_param: "",
     },
     ProviderInfo {
         // The Cohere Python SDK has NO `CohereClient` class (verified:

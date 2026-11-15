@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 //! The rewrite behind `init` / `apply` must authenticate to the proxy (#60).
 //!
-//! The proxy reads the PromptGuard key only from `X-API-Key`; `Authorization`
+//! The proxy reads its key only from `X-API-Key`; `Authorization`
 //! (what an SDK's `api_key` becomes) is forwarded to the provider. A rewrite
 //! that adds a base URL without that header is refused with 401
 //! `missing_api_key`, so every rewritten client must carry it, and the
@@ -49,7 +49,8 @@ fn assert_ts_parses(source: &str) {
     assert_parses(source, &tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into());
 }
 
-const PY_HEADER: &str = r#"default_headers={"X-API-Key": os.environ.get("PROMPTGUARD_API_KEY")}"#;
+const PY_HEADER: &str =
+    r#"default_headers={"X-API-Key": os.environ.get("PROMPTGUARD_API_KEY", "")}"#;
 const TS_HEADER: &str = r#"defaultHeaders: { "X-API-Key": process.env.PROMPTGUARD_API_KEY }"#;
 
 #[test]
@@ -93,23 +94,19 @@ fn python_header_uses_the_configured_env_var() {
         "PG_KEY",
     );
     assert!(
-        out.contains(r#"{"X-API-Key": os.environ.get("PG_KEY")}"#),
+        out.contains(r#"{"X-API-Key": os.environ.get("PG_KEY", "")}"#),
         "{out}"
     );
 }
 
 #[test]
-fn python_async_groq_and_anthropic_get_the_header() {
+fn python_async_and_groq_get_the_header() {
     for (provider, src) in [
         (
             Provider::OpenAI,
             "from openai import AsyncOpenAI\nclient = AsyncOpenAI()\n",
         ),
         (Provider::Groq, "from groq import Groq\nclient = Groq()\n"),
-        (
-            Provider::Anthropic,
-            "from anthropic import Anthropic\nclient = Anthropic()\n",
-        ),
     ] {
         let (result, out) = transform("app.py", provider, src);
         assert!(result.modified, "{src}");
@@ -124,7 +121,7 @@ fn python_huggingface_uses_its_headers_kwarg() {
     let (result, out) = transform("app.py", Provider::HuggingFace, src);
     assert!(result.modified);
     assert!(
-        out.contains(r#"headers={"X-API-Key": os.environ.get("PROMPTGUARD_API_KEY")}"#),
+        out.contains(r#"headers={"X-API-Key": os.environ.get("PROMPTGUARD_API_KEY", "")}"#),
         "{out}"
     );
     assert!(!out.contains("default_headers"), "{out}");
@@ -142,7 +139,7 @@ fn python_cohere_cannot_carry_the_header_and_is_reported() {
     assert_eq!(out, src);
 }
 
-/// A second `default_headers=` would be a SyntaxError; merging into an
+/// A second `default_headers=` would be a syntax error; merging into an
 /// existing one is left to the developer.
 #[test]
 fn python_existing_default_headers_is_reported_not_rewritten() {
@@ -217,4 +214,80 @@ fn typescript_providers_without_a_header_option_are_reported() {
     let (result, out) = transform("app.ts", Provider::HuggingFace, src);
     assert!(!result.modified, "{out}");
     assert_eq!(result.needs_manual_routing, 1);
+}
+
+/// Until #66 the Anthropic rewrite cannot work (the SDK's own key travels in
+/// the header the proxy authenticates on), so it is reported, not half-done.
+#[test]
+fn anthropic_is_reported_for_manual_routing() {
+    for (file, src) in [
+        ("app.py", "from anthropic import Anthropic\nclient = Anthropic()\n"),
+        ("app.ts", "import Anthropic from \"@anthropic-ai/sdk\";\nconst c = new Anthropic({ apiKey: k });\n"),
+    ] {
+        let (result, out) = transform(file, Provider::Anthropic, src);
+        assert!(!result.modified, "{out}");
+        assert_eq!(result.needs_manual_routing, 1, "{file}");
+        assert_eq!(out, src);
+    }
+}
+
+/// A client an earlier version rewrote has the proxy URL and no header, and
+/// gets 401. Re-running the rewrite must add the header, once.
+#[test]
+fn python_earlier_rewrite_gets_the_header_added_once() {
+    let src = format!(
+        "import os\nfrom openai import OpenAI\nclient = OpenAI(\n    api_key=os.environ.get(\"OPENAI_API_KEY\"),\n    base_url=\"{PROXY}\"\n)\n"
+    );
+    let (result, out) = transform("app.py", Provider::OpenAI, &src);
+    assert!(result.modified, "{out}");
+    assert!(out.contains(PY_HEADER), "{out}");
+    assert_eq!(out.matches("base_url=").count(), 1, "{out}");
+    assert_python_parses(&out);
+
+    let (again, out2) = transform("app.py", Provider::OpenAI, &out);
+    assert!(!again.modified, "second run must be a no-op:\n{out2}");
+    assert_eq!(out2, out);
+}
+
+#[test]
+fn typescript_earlier_rewrite_gets_the_header_added_once() {
+    let src = format!(
+        "import OpenAI from \"openai\";\nconst c = new OpenAI({{\n  apiKey: process.env.OPENAI_API_KEY,\n  baseURL: \"{PROXY}\"\n}});\n"
+    );
+    let (result, out) = transform("app.ts", Provider::OpenAI, &src);
+    assert!(result.modified, "{out}");
+    assert!(out.contains(TS_HEADER), "{out}");
+    assert_eq!(out.matches("baseURL").count(), 1, "{out}");
+    assert_ts_parses(&out);
+
+    let (again, out2) = transform("app.ts", Provider::OpenAI, &out);
+    assert!(!again.modified, "second run must be a no-op:\n{out2}");
+}
+
+/// A base URL that is not the proxy is the developer's own gateway: leave it.
+#[test]
+fn other_base_urls_are_left_alone() {
+    let py = "from openai import OpenAI\nclient = OpenAI(base_url=\"https://gw.example.com/v1\")\n";
+    let (result, out) = transform("app.py", Provider::OpenAI, py);
+    assert!(!result.modified, "{out}");
+    assert_eq!(result.needs_manual_routing, 0);
+    let ts = "import OpenAI from \"openai\";\nconst c = new OpenAI({ baseURL: \"https://gw.example.com/v1\" });\n";
+    let (result, out) = transform("app.ts", Provider::OpenAI, ts);
+    assert!(!result.modified, "{out}");
+    assert_eq!(result.needs_manual_routing, 0);
+}
+
+/// A spread or computed key may carry headers; an appended `defaultHeaders`
+/// would silently override them.
+#[test]
+fn typescript_spread_and_computed_keys_are_reported() {
+    for src in [
+        "import OpenAI from \"openai\";\nconst c = new OpenAI({ ...shared });\n",
+        "import OpenAI from \"openai\";\nconst c = new OpenAI({ apiKey: k, [\"defaultHeaders\"]: h });\n",
+    ] {
+        let (result, out) = transform("app.ts", Provider::OpenAI, src);
+        assert!(!result.modified, "{out}");
+        assert_eq!(result.needs_manual_routing, 1, "{src}");
+        assert_eq!(out, src);
+    }
 }

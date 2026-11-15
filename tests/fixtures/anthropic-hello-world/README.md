@@ -60,45 +60,11 @@ The CLI should detect:
 
 ## Expected Transformations
 
-The provider key stays where it is: the proxy forwards it to the provider, and reads the
-PromptGuard key only from the `X-API-Key` header.
-
-This rewrite does not yet work for Anthropic: the SDK needs the base URL without `/v1` and
-sends its own key in `X-Api-Key`. Tracked in promptguardhq/promptguard-cli#66.
-
-### TypeScript/JavaScript
-Before:
-```typescript
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
-```
-
-After:
-```typescript
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-  baseURL: "https://api.promptguard.co/api/v1",
-  defaultHeaders: { "X-API-Key": process.env.PROMPTGUARD_API_KEY }
-});
-```
-
-### Python
-Before:
-```python
-client = Anthropic(
-    api_key=os.environ.get("ANTHROPIC_API_KEY"),
-)
-```
-
-After:
-```python
-client = Anthropic(
-    api_key=os.environ.get("ANTHROPIC_API_KEY"),
-    base_url="https://api.promptguard.co/api/v1",
-    default_headers={"X-API-Key": os.environ.get("PROMPTGUARD_API_KEY")}
-)
-```
+None, for now: `init` and `apply` leave these clients untouched and list them for manual
+routing. The Anthropic SDK sends its own key in `X-Api-Key`, the header the proxy reads the
+PromptGuard key from, and appends `/v1` to the base URL itself, so the generic rewrite cannot
+work. Tracked in promptguardhq/promptguard-cli#66; the shape to set up by hand is on
+docs.promptguard.co under Integrations, Anthropic.
 
 ## Model Used
 

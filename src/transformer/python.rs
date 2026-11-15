@@ -39,21 +39,32 @@ fn args_have_keyword(source: &str, args_node: tree_sitter::Node, name: &str) -> 
     false
 }
 
-/// The two keyword arguments every rewrite adds: the proxy URL, and the
-/// header that authenticates to it (the proxy reads the PromptGuard key only
-/// from `X-API-Key`). The provider key stays in the SDK's own `api_key` (or
-/// its environment default), which the proxy forwards to the provider.
-fn write_proxy_args(out: &mut String, headers_param: &str, proxy_url: &str, api_key_env_var: &str) {
-    let _ = writeln!(out, "    base_url=\"{proxy_url}\",");
+/// The keyword arguments a rewrite adds: the proxy URL (unless the call
+/// already has it), and the header that authenticates to it (the proxy reads
+/// its key only from `X-API-Key`). The provider key stays in the
+/// SDK's own `api_key` (or its environment default), which the proxy forwards
+/// to the provider. The `""` default keeps an unset variable a readable 401
+/// from the proxy: `None` makes the SDK raise a `TypeError` on every request.
+fn write_proxy_args(
+    out: &mut String,
+    with_base_url: bool,
+    headers_param: &str,
+    proxy_url: &str,
+    api_key_env_var: &str,
+) {
+    if with_base_url {
+        let _ = writeln!(out, "    base_url=\"{proxy_url}\",");
+    }
     let _ = writeln!(
         out,
-        "    {headers_param}={{\"X-API-Key\": os.environ.get(\"{api_key_env_var}\")}}"
+        "    {headers_param}={{\"X-API-Key\": os.environ.get(\"{api_key_env_var}\", \"\")}}"
     );
 }
 
 fn transform_args(
     source: &str,
     args_node: tree_sitter::Node,
+    with_base_url: bool,
     headers_param: &str,
     proxy_url: &str,
     api_key_env_var: &str,
@@ -97,13 +108,25 @@ fn transform_args(
                 new_args.push_str(tail);
             }
             new_args.push('\n');
-            write_proxy_args(&mut new_args, headers_param, proxy_url, api_key_env_var);
+            write_proxy_args(
+                &mut new_args,
+                with_base_url,
+                headers_param,
+                proxy_url,
+                api_key_env_var,
+            );
         },
         _ => {
             // No arguments. The SDK keeps reading the provider key from its
             // own environment variable. Keep any comment-only content after
             // the injected arguments.
-            write_proxy_args(&mut new_args, headers_param, proxy_url, api_key_env_var);
+            write_proxy_args(
+                &mut new_args,
+                true,
+                headers_param,
+                proxy_url,
+                api_key_env_var,
+            );
             let comments = inner.trim();
             if !comments.is_empty() {
                 let _ = writeln!(new_args, "    {comments}");
@@ -219,10 +242,21 @@ impl Transformer for PythonTransformer {
             Grammar::Python,
             provider,
             |source, args_node| {
-                if has_base_url(source, args_node) {
-                    return None;
-                }
                 let headers_param = ProviderInfo::get(provider).map_or("", |i| i.py_headers_param);
+                let args_text = &source[args_node.start_byte()..args_node.end_byte()];
+                let with_base_url = !has_base_url(source, args_node);
+                if !with_base_url {
+                    // Already routed. A call an earlier version rewrote has
+                    // the proxy URL but no header and gets 401: add the
+                    // header. Any other base URL is the developer's own.
+                    let earlier_rewrite = !headers_param.is_empty()
+                        && args_text.contains(&format!("\"{proxy_url}\""))
+                        && !args_have_splat(args_node)
+                        && !args_have_keyword(source, args_node, headers_param);
+                    if !earlier_rewrite {
+                        return None;
+                    }
+                }
                 // Manual routing when the transformer cannot know what a
                 // splat expands to, when the SDK has no header argument (a
                 // base URL alone gets 401 from the proxy), or when the call
@@ -234,8 +268,14 @@ impl Transformer for PythonTransformer {
                     manual_skips.set(manual_skips.get() + 1);
                     return None;
                 }
-                let new_args =
-                    transform_args(source, args_node, headers_param, proxy_url, api_key_env_var);
+                let new_args = transform_args(
+                    source,
+                    args_node,
+                    with_base_url,
+                    headers_param,
+                    proxy_url,
+                    api_key_env_var,
+                );
                 Some((args_node.start_byte(), args_node.end_byte(), new_args))
             },
             ensure_os_import,

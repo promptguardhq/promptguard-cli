@@ -91,6 +91,6 @@ After:
 client = OpenAI(
     api_key=os.environ.get("OPENAI_API_KEY"),
     base_url="https://api.promptguard.co/api/v1",
-    default_headers={"X-API-Key": os.environ.get("PROMPTGUARD_API_KEY")}
+    default_headers={"X-API-Key": os.environ.get("PROMPTGUARD_API_KEY", "")}
 )
 ```

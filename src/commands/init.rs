@@ -209,12 +209,12 @@ impl InitCommand {
                         provider.display_name()
                     ));
                 } else if result.needs_manual_routing > 0 {
-                    // Be honest: these call sites pass dynamic arguments
-                    // (`**cfg`, an identifier options object, ...) that could
-                    // already carry a base_url, injecting one could raise a
-                    // TypeError at runtime, so they were left untouched.
+                    // Be honest: these call sites were left untouched because
+                    // a rewrite could break them or could not authenticate
+                    // (dynamic arguments such as `**cfg`, headers already
+                    // set, or an SDK with no header option).
                     Output::excluded(&format!(
-                        "{} (skipped: {} call site(s) pass dynamic arguments, route through PromptGuard manually)",
+                        "{} (skipped: {} call site(s) could not be rewritten safely, route through PromptGuard manually)",
                         rel_path.display(),
                         result.needs_manual_routing
                     ));

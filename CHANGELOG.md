@@ -22,11 +22,13 @@ survives three releases is a changelog nobody is maintaining.
   `defaultHeaders` (TypeScript) carrying the key, and leaves your provider key
   where it was: a client with no arguments used to get your PromptGuard key as
   its provider key, which the proxy forwards to the provider, where it failed.
-  Calls the rewrite cannot make work are left untouched and listed for manual
-  routing: ones that already set headers, `cohere.Client`, and the TypeScript
-  Hugging Face and Cohere clients. A client an earlier version already
-  rewrote is skipped, because it has a base URL; add the header to it by hand.
-  Anthropic clients still need manual setup (#66).
+  A client an earlier version rewrote (the proxy URL, no header) gets the
+  header added when you run `init` or `apply` again. Calls the rewrite cannot
+  make work are left untouched and listed for manual routing: ones that
+  already set headers or pass dynamic options (`**cfg`, `...cfg`),
+  `cohere.Client`, the TypeScript Hugging Face and Cohere clients, and
+  Anthropic clients, whose SDK sends its own key in the header the proxy
+  authenticates on (#66).
 
 ## [2.5.1] - 2026-11-14
 

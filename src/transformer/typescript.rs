@@ -40,8 +40,27 @@ fn ts_needs_manual_routing(
         return true;
     }
     // A second `defaultHeaders` key would replace the first (or fail to type
-    // check); merging into the existing one is left to the developer.
-    object_node.is_some_and(|node| ts_object_has_property(source, node, info.ts_headers_param))
+    // check); merging into the existing one is left to the developer. A
+    // spread or computed key may carry headers the rewrite cannot see, and an
+    // appended key would silently override them.
+    object_node.is_some_and(|node| {
+        ts_object_has_dynamic_keys(node)
+            || ts_object_has_property(source, node, info.ts_headers_param)
+    })
+}
+
+/// Whether the object literal has a spread (`...cfg`) or a computed key
+/// (`[name]: …`), whose properties are unknown until run time.
+fn ts_object_has_dynamic_keys(object_node: tree_sitter::Node) -> bool {
+    let mut cursor = object_node.walk();
+    let found = object_node.named_children(&mut cursor).any(|child| {
+        child.kind() == "spread_element"
+            || (child.kind() == "pair"
+                && child
+                    .child_by_field_name("key")
+                    .is_some_and(|key| key.kind() == "computed_property_name"))
+    });
+    found
 }
 
 /// Whether the object literal has a property named `name`, as `name: …`,
@@ -64,16 +83,20 @@ fn ts_object_has_property(source: &str, object_node: tree_sitter::Node, name: &s
     false
 }
 
-/// The two lines every rewrite adds: the proxy URL, and the header that
-/// authenticates to it. The provider key stays in the SDK's own option (or
-/// its environment default), which the proxy forwards to the provider.
+/// The lines a rewrite adds: the proxy URL (unless the object already has
+/// it), and the header that authenticates to it. The provider key stays in
+/// the SDK's own option (or its environment default), which the proxy
+/// forwards to the provider.
 fn write_proxy_props(
     out: &mut String,
+    with_base_url: bool,
     info: &ProviderInfo,
     proxy_url: &str,
     api_key_env_var: &str,
 ) {
-    let _ = writeln!(out, "  {}: \"{proxy_url}\",", info.ts_base_url_param);
+    if with_base_url {
+        let _ = writeln!(out, "  {}: \"{proxy_url}\",", info.ts_base_url_param);
+    }
     let _ = writeln!(
         out,
         "  {}: {{ \"X-API-Key\": process.env.{api_key_env_var} }}",
@@ -84,6 +107,7 @@ fn write_proxy_props(
 fn transform_ts_object(
     source: &str,
     object_node: tree_sitter::Node,
+    with_base_url: bool,
     info: &ProviderInfo,
     proxy_url: &str,
     api_key_env_var: &str,
@@ -125,12 +149,18 @@ fn transform_ts_object(
                 new_object.push_str(tail);
             }
             new_object.push('\n');
-            write_proxy_props(&mut new_object, info, proxy_url, api_key_env_var);
+            write_proxy_props(
+                &mut new_object,
+                with_base_url,
+                info,
+                proxy_url,
+                api_key_env_var,
+            );
         },
         _ => {
             // No properties. Keep any comment-only content after the
             // injected properties.
-            write_proxy_props(&mut new_object, info, proxy_url, api_key_env_var);
+            write_proxy_props(&mut new_object, true, info, proxy_url, api_key_env_var);
             let comments = inner.trim();
             if !comments.is_empty() {
                 let _ = writeln!(new_object, "  {comments}");
@@ -160,7 +190,7 @@ fn synthesize_ts_options(
         .unwrap_or(args_text);
 
     let mut new_args = String::from("({\n");
-    write_proxy_props(&mut new_args, info, proxy_url, api_key_env_var);
+    write_proxy_props(&mut new_args, true, info, proxy_url, api_key_env_var);
     // Keep any comment-only content from the original argument list.
     let comments = inner.trim();
     if !comments.is_empty() {
@@ -222,15 +252,29 @@ impl Transformer for TypeScriptTransformer {
                     .find(|child| child.kind() == "object");
 
                 if let Some(object) = object {
-                    if ts_has_base_url(source, object, provider) {
-                        return None;
+                    let with_base_url = !ts_has_base_url(source, object, provider);
+                    let manual = ts_needs_manual_routing(source, Some(object), info);
+                    if !with_base_url {
+                        // Already routed. A call an earlier version rewrote
+                        // has the proxy URL but no header and gets 401: add
+                        // the header. Any other base URL is the developer's.
+                        let text = &source[object.start_byte()..object.end_byte()];
+                        if manual || !text.contains(&format!("\"{proxy_url}\"")) {
+                            return None;
+                        }
                     }
-                    if ts_needs_manual_routing(source, Some(object), info) {
+                    if manual {
                         manual_skips.set(manual_skips.get() + 1);
                         return None;
                     }
-                    let new_obj =
-                        transform_ts_object(source, object, info, proxy_url, api_key_env_var);
+                    let new_obj = transform_ts_object(
+                        source,
+                        object,
+                        with_base_url,
+                        info,
+                        proxy_url,
+                        api_key_env_var,
+                    );
                     return Some((object.start_byte(), object.end_byte(), new_obj));
                 }
 
