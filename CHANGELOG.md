@@ -13,6 +13,8 @@ survives three releases is a changelog nobody is maintaining.
 
 ## [Unreleased]
 
+## [2.5.2] - 2026-11-16
+
 ### Fixed
 
 - **Clients rewritten by `init` and `apply` now authenticate to the proxy.**
