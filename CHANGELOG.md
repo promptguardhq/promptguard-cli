@@ -18,9 +18,12 @@ survives three releases is a changelog nobody is maintaining.
 - **`scan --json` and the MCP `promptguard_scan_project` tool report
   `has_api_key_header` for each SDK instance**: whether the call sets the
   `X-API-Key` header, the only place the proxy reads your PromptGuard key
-  from. `has_base_url` alone could not tell a client that works through the
-  proxy from one that points at it and gets 401; the VS Code extension uses
-  both to say which calls are protected.
+  from. It is read from the call's literal headers, so a comment or value
+  that mentions the name does not count, and it is `null` when the headers
+  come from a variable, a splat or a spread the scan cannot see.
+  `has_base_url` alone could not tell a client that works through the proxy
+  from one that points at it and gets 401; the VS Code extension uses both to
+  say which calls are protected.
 
 ## [2.5.2] - 2026-11-16
 

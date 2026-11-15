@@ -311,7 +311,7 @@ fn scan_project_output_schema() -> serde_json::Value {
                                     "line": {"type": "integer"},
                                     "column": {"type": "integer"},
                                     "has_base_url": {"type": "boolean"},
-                                    "has_api_key_header": {"type": "boolean"}
+                                    "has_api_key_header": {"type": ["boolean", "null"]}
                                 },
                                 "required": ["file", "line", "column", "has_base_url", "has_api_key_header"]
                             }

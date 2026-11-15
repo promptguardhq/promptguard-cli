@@ -90,3 +90,72 @@ fn an_api_key_argument_is_not_the_header() {
     )]);
     assert_eq!(flags(&instances[0]), (true, false));
 }
+
+fn header_state(instance: &serde_json::Value) -> Option<bool> {
+    assert!(
+        instance.get("has_api_key_header").is_some(),
+        "has_api_key_header missing: {instance}"
+    );
+    instance["has_api_key_header"].as_bool()
+}
+
+/// Headers the scan cannot see (a variable, a splat, a spread) are unknown,
+/// `null`, never "no header": the call may well send it.
+#[test]
+fn headers_from_elsewhere_are_unknown() {
+    let instances = scan_instances(&[
+        (
+            "a_var.py",
+            "from openai import OpenAI\nclient = OpenAI(base_url=\"https://api.promptguard.co/api/v1\", default_headers=pg_headers)\n",
+        ),
+        (
+            "b_splat.py",
+            "from openai import OpenAI\nclient = OpenAI(base_url=\"https://api.promptguard.co/api/v1\", **cfg)\n",
+        ),
+        (
+            "c_var.ts",
+            "import OpenAI from \"openai\";\nconst c = new OpenAI({ baseURL: \"https://api.promptguard.co/api/v1\", defaultHeaders: headers });\n",
+        ),
+        (
+            "d_spread.ts",
+            "import OpenAI from \"openai\";\nconst c = new OpenAI({ baseURL: \"https://api.promptguard.co/api/v1\", defaultHeaders: { ...shared } });\n",
+        ),
+    ]);
+    assert_eq!(instances.len(), 4, "{instances:?}");
+    for instance in &instances {
+        assert_eq!(header_state(instance), None, "{instance}");
+    }
+}
+
+/// Only a header key counts: the name in a comment or a value does not.
+#[test]
+fn the_name_outside_a_header_key_does_not_count() {
+    let instances = scan_instances(&[
+        (
+            "a_comment.py",
+            "from openai import OpenAI\nclient = OpenAI(\n    base_url=\"https://api.promptguard.co/api/v1\",  # TODO add \"X-API-Key\"\n)\n",
+        ),
+        (
+            "b_value.ts",
+            "import OpenAI from \"openai\";\nconst c = new OpenAI({ baseURL: \"https://api.promptguard.co/api/v1\", defaultHeaders: { \"X-Note\": \"x-api-key\" } });\n",
+        ),
+    ]);
+    for instance in &instances {
+        assert_eq!(header_state(instance), Some(false), "{instance}");
+    }
+}
+
+/// A positional argument (an api key, a model id) is not where headers go.
+#[test]
+fn python_positional_arguments_are_not_unknown_headers() {
+    let instances = scan_instances(&[(
+        "a.py",
+        "from huggingface_hub import InferenceClient\nclient = InferenceClient(model_id, base_url=\"https://api.promptguard.co/api/v1\")\n",
+    )]);
+    assert_eq!(
+        header_state(&instances[0]),
+        Some(false),
+        "{:?}",
+        instances[0]
+    );
+}

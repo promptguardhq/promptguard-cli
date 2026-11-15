@@ -73,8 +73,10 @@ pub struct DetectionInstance {
     pub has_base_url: bool,
     pub current_base_url: Option<String>,
     /// Whether the call sets an `X-API-Key` header, the only place the proxy
-    /// reads its key from: a base URL without it gets 401.
-    pub has_api_key_header: bool,
+    /// reads its key from: a base URL without it gets 401. `None` when the
+    /// headers come from somewhere the scan cannot see (a variable, a splat,
+    /// a spread), so the call may send it.
+    pub has_api_key_header: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

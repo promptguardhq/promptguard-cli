@@ -118,13 +118,100 @@ pub fn typescript_object_has_base_url(
     object_text.contains("base_url:")
 }
 
-/// Whether a constructor's argument text sets an `X-API-Key` header: the
-/// header name as a quoted string, in any case (dict keys in Python, object
-/// keys in TypeScript, where the hyphen forces quotes). The SDK's own
-/// `api_key` / `apiKey` argument never matches.
-fn args_set_api_key_header(args_text: &str) -> bool {
-    let lower = args_text.to_ascii_lowercase();
-    lower.contains("\"x-api-key\"") || lower.contains("'x-api-key'")
+/// Constructor arguments that carry default headers, across the SDKs the
+/// rewrite targets (`default_headers` / `defaultHeaders` for the
+/// Stainless-built SDKs, `headers` for Hugging Face).
+const HEADER_ARGS: &[&str] = &["default_headers", "defaultHeaders", "headers"];
+
+/// Whether a constructor call sets an `X-API-Key` header, read from the
+/// syntax tree: a key of a literal headers dict or object, in any case. A
+/// comment or a value that mentions the name does not count. `None` when
+/// the headers come from somewhere the scan cannot see (a variable, a splat,
+/// a spread), since the call may send it.
+fn api_key_header_state(source: &str, args_node: tree_sitter::Node) -> Option<bool> {
+    let mut unknown = false;
+    let mut cursor = args_node.walk();
+    for child in args_node.named_children(&mut cursor) {
+        let headers = match child.kind() {
+            // Python `name=value`, TypeScript `name: value` in an options object.
+            "keyword_argument" | "pair" => {
+                let name = child
+                    .child_by_field_name(if child.kind() == "pair" {
+                        "key"
+                    } else {
+                        "name"
+                    })
+                    .map(|n| unquoted(source, n));
+                if !name.is_some_and(|n| HEADER_ARGS.contains(&n)) {
+                    continue;
+                }
+                child.child_by_field_name("value")
+            },
+            // The options object itself (TypeScript): recurse into it.
+            "object" => match api_key_header_state(source, child) {
+                Some(true) => return Some(true),
+                Some(false) => continue,
+                None => {
+                    unknown = true;
+                    continue;
+                },
+            },
+            "shorthand_property_identifier" => {
+                unknown |= HEADER_ARGS.contains(&unquoted(source, child));
+                continue;
+            },
+            // Splats and spreads, whose contents are unknown, and a TypeScript
+            // options argument passed as a variable. A Python positional
+            // argument (a key, a model id) is not where headers go.
+            _ => {
+                unknown |= matches!(
+                    child.kind(),
+                    "dictionary_splat" | "list_splat" | "spread_element"
+                ) || (args_node.kind() == "arguments" && child.kind() != "comment");
+                continue;
+            },
+        };
+        match headers.map(|h| literal_keys_include_api_key(source, h)) {
+            Some(Some(true)) => return Some(true),
+            Some(Some(false)) => {},
+            _ => unknown = true,
+        }
+    }
+    (!unknown).then_some(false)
+}
+
+/// For a literal dict (Python) or object (TypeScript): whether one of its keys
+/// is `X-API-Key`. `None` when it is not a literal, or spreads another one in.
+fn literal_keys_include_api_key(source: &str, node: tree_sitter::Node) -> Option<bool> {
+    if !matches!(node.kind(), "dictionary" | "object") {
+        return None;
+    }
+    let mut unknown = false;
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        match child.kind() {
+            "pair" => {
+                if child
+                    .child_by_field_name("key")
+                    .is_some_and(|k| unquoted(source, k).eq_ignore_ascii_case("x-api-key"))
+                {
+                    return Some(true);
+                }
+            },
+            "dictionary_splat" | "spread_element" => unknown = true,
+            _ => {},
+        }
+    }
+    (!unknown).then_some(false)
+}
+
+/// A key node's text without the quotes of a plain string literal.
+fn unquoted<'s>(source: &'s str, node: tree_sitter::Node) -> &'s str {
+    let text = &source[node.start_byte()..node.end_byte()];
+    ['"', '\'']
+        .iter()
+        .find_map(|&q| text.strip_prefix(q).and_then(|t| t.strip_suffix(q)))
+        .unwrap_or(text)
 }
 
 fn python_check_base_url(source: &str, args_node: tree_sitter::Node) -> (bool, Option<String>) {
@@ -184,9 +271,8 @@ fn detect_in_tree(
                     typescript_check_base_url(source, c.node, provider)
                 }
             });
-            let has_api_key_header = args.is_some_and(|c| {
-                args_set_api_key_header(&source[c.node.start_byte()..c.node.end_byte()])
-            });
+            let has_api_key_header =
+                args.map_or(Some(false), |c| api_key_header_state(source, c.node));
 
             instances.push(DetectionInstance {
                 file_path: file_path.to_path_buf(),
