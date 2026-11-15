@@ -58,6 +58,9 @@ The CLI should detect:
 
 ## Expected Transformations
 
+The provider key stays where it is: the proxy forwards it to the provider, and reads the
+PromptGuard key only from the `X-API-Key` header.
+
 ### TypeScript/JavaScript
 Before:
 ```typescript
@@ -69,8 +72,9 @@ const openai = new OpenAI({
 After:
 ```typescript
 const openai = new OpenAI({
-  apiKey: process.env.PROMPTGUARD_API_KEY,
-  baseURL: "https://api.promptguard.co/api/v1"
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: "https://api.promptguard.co/api/v1",
+  defaultHeaders: { "X-API-Key": process.env.PROMPTGUARD_API_KEY }
 });
 ```
 
@@ -85,7 +89,8 @@ client = OpenAI(
 After:
 ```python
 client = OpenAI(
-    api_key=os.environ.get("PROMPTGUARD_API_KEY"),
-    base_url="https://api.promptguard.co/api/v1"
+    api_key=os.environ.get("OPENAI_API_KEY"),
+    base_url="https://api.promptguard.co/api/v1",
+    default_headers={"X-API-Key": os.environ.get("PROMPTGUARD_API_KEY")}
 )
 ```
