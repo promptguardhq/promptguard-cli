@@ -130,7 +130,7 @@ promptguard mcp install                              # every detected client
 promptguard mcp install --clients claude-code,cursor # only these
 promptguard mcp install --dry-run                    # show what would change
 promptguard mcp install --local                      # the local stdio server instead
-promptguard mcp install --url https://staging-api.promptguard.co/mcp
+promptguard mcp install --url https://api.staging.promptguard.co/mcp
 ```
 
 | Client | `--clients` name | How it is configured |

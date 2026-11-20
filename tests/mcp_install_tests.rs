@@ -387,7 +387,7 @@ fn windsurf_uses_server_url() {
 fn url_flag_overrides_the_hosted_server() {
     let env = Env::new();
     let file = env.cursor_dir().join("mcp.json");
-    let staging = "https://staging-api.promptguard.co/mcp";
+    let staging = "https://api.staging.promptguard.co/mcp";
 
     let out = env.run(&["--clients", "cursor", "--url", staging]);
     assert!(out.status.success(), "{}", stdout(&out));
