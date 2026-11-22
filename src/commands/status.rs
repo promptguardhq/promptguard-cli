@@ -66,10 +66,7 @@ impl StatusCommand {
             println!("\nConfiguration:");
             println!("  • Config file: .promptguard.json");
             if let Some(last_applied) = config.metadata.last_applied {
-                println!(
-                    "  • Last applied: {}",
-                    last_applied.format("%Y-%m-%d %H:%M:%S")
-                );
+                println!("  • Last applied: {}", last_applied.display_seconds());
             }
             println!("  • Files managed: {}", config.metadata.files_managed.len());
             println!("  • Providers: {}", config.providers.join(", "));

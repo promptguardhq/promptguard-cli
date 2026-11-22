@@ -15,6 +15,7 @@ pub mod local_rules;
 pub mod scanner;
 pub mod shim;
 pub mod text;
+pub mod timestamp;
 pub mod transformer;
 pub mod types;
 

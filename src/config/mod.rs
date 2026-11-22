@@ -1,5 +1,5 @@
 use crate::error::{PromptGuardError, Result};
-use chrono::{DateTime, Utc};
+use crate::timestamp::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -189,7 +189,7 @@ pub fn validate_env_var_name(name: &str) -> Result<()> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConfigMetadata {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub last_applied: Option<DateTime<Utc>>,
+    pub last_applied: Option<Timestamp>,
     pub cli_version: String,
     #[serde(default)]
     pub files_managed: Vec<String>,

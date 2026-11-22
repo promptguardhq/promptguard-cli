@@ -86,10 +86,7 @@ impl ConfigCommand {
         println!("\nMetadata:");
         println!("  CLI version: {}", config.metadata.cli_version);
         if let Some(last_applied) = config.metadata.last_applied {
-            println!(
-                "  Last applied: {}",
-                last_applied.format("%Y-%m-%d %H:%M:%S UTC")
-            );
+            println!("  Last applied: {} UTC", last_applied.display_seconds());
         }
         if !config.metadata.files_managed.is_empty() {
             println!("  Files managed: {}", config.metadata.files_managed.len());

@@ -1169,7 +1169,7 @@ impl Proxy {
                 server: &self.server,
                 pins_path: &pins_path,
                 stored: stored.as_ref(),
-                now: chrono::Utc::now().to_rfc3339(),
+                now: crate::timestamp::Timestamp::now().to_rfc3339(),
                 repin: self.repin.load(Ordering::Relaxed),
             },
             tools,

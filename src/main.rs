@@ -22,6 +22,7 @@ mod output;
 mod scanner;
 mod shim;
 mod text;
+mod timestamp;
 mod transformer;
 mod types;
 

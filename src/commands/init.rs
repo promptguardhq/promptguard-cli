@@ -266,7 +266,7 @@ impl InitCommand {
                 })
                 .collect();
             config.metadata.backups = backups_created;
-            config.metadata.last_applied = Some(chrono::Utc::now());
+            config.metadata.last_applied = Some(crate::timestamp::Timestamp::now());
 
             config_manager.save(&config)?;
             Output::step(".promptguard.json (created)");

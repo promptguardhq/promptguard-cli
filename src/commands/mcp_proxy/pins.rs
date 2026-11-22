@@ -167,7 +167,7 @@ impl PinStore {
         if !matches!(read(&self.path()), FileState::Corrupt(_)) {
             return Ok(None);
         }
-        let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S%.3fZ");
+        let stamp = crate::timestamp::Timestamp::now().file_stamp();
         let to = self.dir.join(format!("{FILE_NAME}.corrupt-{stamp}"));
         fs::rename(self.path(), &to)?;
         drop(lock);

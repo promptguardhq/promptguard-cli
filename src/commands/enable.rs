@@ -193,7 +193,7 @@ impl EnableCommand {
         // Update config
         config.enabled = true;
         config.runtime_mode = true;
-        config.metadata.last_applied = Some(chrono::Utc::now());
+        config.metadata.last_applied = Some(crate::timestamp::Timestamp::now());
         config_manager.save(config)?;
 
         println!();
@@ -290,7 +290,7 @@ impl EnableCommand {
                 config.metadata.backups.push(backup);
             }
         }
-        config.metadata.last_applied = Some(chrono::Utc::now());
+        config.metadata.last_applied = Some(crate::timestamp::Timestamp::now());
         config_manager.save(config)?;
         Output::step("Updated configuration");
 
