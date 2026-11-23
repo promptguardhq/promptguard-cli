@@ -596,7 +596,7 @@ Examples:
   promptguard mcp install --clients claude-code,cursor
   promptguard mcp install --dry-run
   promptguard mcp install --local              Use the local stdio server instead
-  promptguard mcp install --url https://staging-api.promptguard.co/mcp")]
+  promptguard mcp install --url https://api.staging.promptguard.co/mcp")]
     Install {
         /// Only these clients (comma-separated); default: every detected one
         #[arg(long, value_enum, value_delimiter = ',', value_name = "CLIENTS")]
