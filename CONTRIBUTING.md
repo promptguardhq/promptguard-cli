@@ -92,13 +92,13 @@ Each fixture contains sample code, `package.json`/`requirements.txt`, and `.env`
 
 ## CI/CD
 
-CI runs on every push to `main` and on PRs (`.github/workflows/ci.yml`):
+CI runs on every push to `main` and on PRs into `main` that touch more than docs, plus a daily scheduled run (`.github/workflows/ci.yml`):
 
 | Job | What it does |
 |---|---|
-| **Code Quality** | `cargo fmt --check` + `cargo clippy -D warnings` |
-| **Test Suite** | `cargo test` on `{ubuntu, macos}` x `{stable, beta}` Rust |
-| **Security Audit** | `cargo audit` via `rustsec/audit-check` |
+| **Code Quality** | `scripts/check_no_github_secrets.py`, the agent-file and dash checks, `cargo fmt --check` + `cargo clippy -D warnings` |
+| **Test Suite** | `cargo test` on Ubuntu stable, Ubuntu beta and macOS stable Rust; the Ubuntu stable leg also builds the release binary and runs it |
+| **Security Audit** | `cargo audit` via `rustsec/audit-check`, then `cargo deny check` |
 
 Reproduce CI locally:
 
