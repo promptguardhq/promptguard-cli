@@ -552,6 +552,7 @@ src/
 ├── scanner/             # Recursive file scanning
 ├── shim/                # Runtime shim generation and injection
 ├── text.rs              # Line-ending-preserving text helpers
+├── timestamp.rs         # UTC timestamps (the CLI's one clock, on the `time` crate)
 ├── transformer/         # AST-based code transformation
 └── types.rs             # Shared types (Language, Provider, detected usage)
 ```
